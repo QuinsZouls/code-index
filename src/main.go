@@ -13,12 +13,16 @@ import (
 	"time"
 )
 
+const appVersion = "0.1.0"
+
 func main() {
 	if len(os.Args) < 2 {
 		usage()
 		os.Exit(1)
 	}
 	switch os.Args[1] {
+	case "version":
+		fmt.Println(appVersion)
 	case "init":
 		runInit(os.Args[2:])
 	case "index":
@@ -34,7 +38,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "ccc commands: init, index, search, status")
+	fmt.Fprintln(os.Stderr, "ccc commands: version, init, index, search, status")
 }
 
 func findProjectRoot(start string) (string, error) {
