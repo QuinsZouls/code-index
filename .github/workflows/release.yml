@@ -50,7 +50,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X 'main.appVersion=0.1.0'" -o "dist/codeindex-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}" ./src
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X 'main.appVersion=0.1.1'" -o "dist/codeindex-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}" ./src
 
       - name: Package Unix release
         if: matrix.goos != 'windows'
@@ -94,7 +94,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: v0.1.0
+          name: v0.1.1
           tag_name: ${{ github.ref_name }}
           files: |
             dist/**
