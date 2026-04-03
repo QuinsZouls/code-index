@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const appVersion = "0.1.1"
+const appVersion = "0.1.2"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -89,6 +89,7 @@ func runInit(args []string) {
 func runIndex(args []string) {
 	fs := flag.NewFlagSet("index", flag.ExitOnError)
 	path := fs.String("path", ".", "project root")
+	verbose := fs.Bool("verbose", false, "show per-file progress")
 	_ = fs.Parse(args)
 	root, err := filepath.Abs(*path)
 	if err != nil {
@@ -110,8 +111,14 @@ func runIndex(args []string) {
 	start := time.Now()
 	printer := newProgressPrinter(os.Stdout, os.Stderr, "Indexing")
 	defer printer.Stop()
+	var indexed int
 	indexer.progressFn = func(p IndexProgress) {
-		printer.Emit(p)
+		if *verbose {
+			printer.Emit(p)
+		}
+		if p.Action == "indexed" || p.Action == "skipped" {
+			indexed++
+		}
 	}
 	if err := indexer.Index(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -119,7 +126,11 @@ func runIndex(args []string) {
 	}
 	printer.Done()
 	status := indexer.Status()
-	fmt.Printf("indexed %d files, %d chunks in %s using %d workers\n", status.Files, status.Chunks, time.Since(start).Round(time.Millisecond), runtime.GOMAXPROCS(0))
+	if *verbose {
+		fmt.Printf("indexed %d files, %d chunks in %s using %d workers\n", status.Files, status.Chunks, time.Since(start).Round(time.Millisecond), runtime.GOMAXPROCS(0))
+		return
+	}
+	fmt.Printf("indexed %d files in %s\n", indexed, time.Since(start).Round(time.Millisecond))
 }
 
 func runSearch(args []string) {

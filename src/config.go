@@ -60,6 +60,8 @@ type Config struct {
 	ChunkSize         int               `json:"chunk_size"`
 	ChunkOverlap      int               `json:"chunk_overlap"`
 	MinChunkSize      int               `json:"min_chunk_size"`
+	WorkerCount       int               `json:"worker_count,omitempty"`
+	CheckpointEvery   int               `json:"checkpoint_every,omitempty"`
 	Embedding         EmbeddingConfig   `json:"embedding"`
 }
 
@@ -81,6 +83,8 @@ func defaultConfig() Config {
 		ChunkSize:         120,
 		ChunkOverlap:      20,
 		MinChunkSize:      8,
+		WorkerCount:       0,
+		CheckpointEvery:   0,
 		Embedding: EmbeddingConfig{
 			Provider:  "openai",
 			Model:     "text-embedding-3-small",
@@ -110,6 +114,12 @@ func (c *Config) normalize() {
 	}
 	if c.MinChunkSize <= 0 {
 		c.MinChunkSize = 8
+	}
+	if c.WorkerCount < 0 {
+		c.WorkerCount = 0
+	}
+	if c.CheckpointEvery < 0 {
+		c.CheckpointEvery = 0
 	}
 	c.Embedding.normalize()
 }
@@ -189,16 +199,36 @@ func saveConfig(projectRoot string, cfg Config) error {
 }
 
 func initProject(projectRoot string) (Config, error) {
-	cfg, err := loadConfig(projectRoot)
-	if err != nil {
-		return Config{}, err
-	}
+	cfg, _ := loadUserDefaultConfig()
 	if err := saveConfig(projectRoot, cfg); err != nil {
 		return Config{}, err
 	}
 	if err := ensureGitignore(projectRoot); err != nil {
 		return Config{}, err
 	}
+	return cfg, nil
+}
+
+func loadUserDefaultConfig() (Config, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		cfg := defaultConfig()
+		return cfg, nil
+	}
+	path := filepath.Join(home, settingsDirName, "default_settings.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			cfg := defaultConfig()
+			return cfg, nil
+		}
+		return Config{}, err
+	}
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return Config{}, fmt.Errorf("parse user default config %s: %w", path, err)
+	}
+	cfg.normalize()
 	return cfg, nil
 }
 

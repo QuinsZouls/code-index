@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -20,27 +19,55 @@ var ignoredDirs = map[string]struct{}{
 	"vendor":       {},
 }
 
-func collectGitignorePatterns(projectRoot string) []string {
-	path := filepath.Join(projectRoot, ".gitignore")
+func collectGitignorePatterns(dirAbs, dirRel string) []string {
+	path := filepath.Join(dirAbs, ".gitignore")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil
 	}
 	var patterns []string
 	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "!") {
-			continue
+		if compiled := compileGitignorePattern(dirRel, line); compiled != "" {
+			patterns = append(patterns, compiled)
 		}
-		if strings.HasPrefix(line, "/") {
-			line = strings.TrimPrefix(line, "/")
-		}
-		if strings.HasSuffix(line, "/") {
-			line = strings.TrimSuffix(line, "/") + "/**"
-		}
-		patterns = append(patterns, line)
 	}
 	return patterns
+}
+
+func compileGitignorePattern(dirRel, line string) string {
+	line = strings.TrimSpace(line)
+	if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "!") {
+		return ""
+	}
+	anchored := strings.HasPrefix(line, "/")
+	if anchored {
+		line = strings.TrimPrefix(line, "/")
+	}
+	dirPattern := strings.HasSuffix(line, "/")
+	if dirPattern {
+		line = strings.TrimSuffix(line, "/")
+	}
+	if line == "" {
+		return ""
+	}
+	dirRel = filepathToSlash(dirRel)
+	prefix := ""
+	if dirRel != "" {
+		prefix = dirRel + "/"
+	}
+	if dirPattern {
+		if anchored {
+			return prefix + line + "/**"
+		}
+		if strings.Contains(line, "/") {
+			return prefix + line + "/**"
+		}
+		return prefix + "**/" + line + "/**"
+	}
+	if anchored || strings.Contains(line, "/") {
+		return prefix + line
+	}
+	return prefix + "**/" + line
 }
 
 func shouldExclude(relPath string, isDir bool, cfg Config, gitignorePatterns []string) bool {
@@ -77,34 +104,46 @@ func fileHash(b []byte) string {
 }
 
 func walkFiles(projectRoot string, cfg Config) ([]string, error) {
-	gitignorePatterns := collectGitignorePatterns(projectRoot)
 	var files []string
-	err := filepath.WalkDir(projectRoot, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
+	if err := walkFilesDir(projectRoot, projectRoot, "", cfg, nil, &files); err != nil {
+		return nil, err
+	}
+	sort.Strings(files)
+	return files, nil
+}
+
+func walkFilesDir(projectRoot, dirAbs, dirRel string, cfg Config, inheritedPatterns []string, files *[]string) error {
+	patterns := append([]string{}, inheritedPatterns...)
+	patterns = append(patterns, collectGitignorePatterns(dirAbs, dirRel)...)
+	entries, err := os.ReadDir(dirAbs)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if name == ".gitignore" {
+			continue
 		}
-		if path == projectRoot {
-			return nil
+		rel := name
+		if dirRel != "" {
+			rel = filepath.Join(dirRel, name)
 		}
-		rel, err := filepath.Rel(projectRoot, path)
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if shouldExclude(rel, true, cfg, gitignorePatterns) {
-				return fs.SkipDir
+		if entry.IsDir() {
+			if shouldExclude(rel, true, cfg, patterns) {
+				continue
 			}
-			return nil
+			if err := walkFilesDir(projectRoot, filepath.Join(dirAbs, name), rel, cfg, patterns, files); err != nil {
+				return err
+			}
+			continue
 		}
-		if shouldExclude(rel, false, cfg, gitignorePatterns) {
-			return nil
+		if shouldExclude(rel, false, cfg, patterns) {
+			continue
 		}
 		if !shouldInclude(rel, cfg) {
-			return nil
+			continue
 		}
-		files = append(files, rel)
-		return nil
-	})
-	sort.Strings(files)
-	return files, err
+		*files = append(*files, rel)
+	}
+	return nil
 }

@@ -47,6 +47,30 @@ func TestWalkFilesHonorsIncludesAndIgnores(t *testing.T) {
 	}
 }
 
+func TestWalkFilesHonorsNestedGitignore(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "repo", "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "repo", ".gitignore"), []byte("nested/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "repo", "keep.go"), []byte("package main"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "repo", "nested", "skip.go"), []byte("package main"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := walkFiles(filepath.Join(root, "repo"), defaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"keep.go"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("walkFiles() = %#v, want %#v", got, want)
+	}
+}
+
 func TestMatchExcludeHelper(t *testing.T) {
 	cfg := defaultConfig()
 	if !shouldExclude(filepath.Join("a", ".codeindex"), true, cfg, nil) {

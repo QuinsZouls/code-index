@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 type SearchOptions struct {
@@ -49,6 +51,16 @@ func (i *Indexer) Index(ctx context.Context) error {
 		return err
 	}
 	currentSig := i.cfg.embeddingSignature()
+	checkpointEvery := i.cfg.CheckpointEvery
+	if checkpointEvery <= 0 {
+		checkpointEvery = len(files) / 50
+		if checkpointEvery < 10 {
+			checkpointEvery = 10
+		}
+		if checkpointEvery > 100 {
+			checkpointEvery = 100
+		}
+	}
 	prevFiles := make(map[string]FileState, len(i.index.Files))
 	for path, state := range i.index.Files {
 		prevFiles[path] = state
@@ -68,16 +80,38 @@ func (i *Indexer) Index(ctx context.Context) error {
 		skipped bool
 		err     error
 	}
-	jobs := make(chan fileJob)
-	results := make(chan fileResult)
-	workerCount := 4
+	workerCount := i.cfg.WorkerCount
+	if workerCount <= 0 {
+		workerCount = runtime.GOMAXPROCS(0) * 2
+		if workerCount < 4 {
+			workerCount = 4
+		}
+		if workerCount > 16 {
+			workerCount = 16
+		}
+	}
 	if len(files) < workerCount {
 		workerCount = len(files)
 	}
 	if workerCount == 0 {
 		workerCount = 1
 	}
+	jobs := make(chan fileJob, workerCount*2)
+	results := make(chan fileResult, workerCount*2)
 	var wg sync.WaitGroup
+	var lastFlush = time.Now()
+	var pendingWrites int
+	flushIndex := func(force bool) error {
+		if !force && pendingWrites < checkpointEvery && time.Since(lastFlush) < 3*time.Second {
+			return nil
+		}
+		if err := saveIndex(indexPath(i.projectRoot), i.index); err != nil {
+			return err
+		}
+		pendingWrites = 0
+		lastFlush = time.Now()
+		return nil
+	}
 	worker := func() {
 		defer wg.Done()
 		for job := range jobs {
@@ -151,9 +185,13 @@ func (i *Indexer) Index(ctx context.Context) error {
 		wg.Wait()
 		close(results)
 	}()
+	var firstErr error
 	for result := range results {
 		if result.err != nil {
-			return result.err
+			if firstErr == nil {
+				firstErr = result.err
+			}
+			continue
 		}
 		seen[result.rel] = struct{}{}
 		if result.skipped {
@@ -164,6 +202,13 @@ func (i *Indexer) Index(ctx context.Context) error {
 		}
 		i.index.Files[result.rel] = FileState{Hash: result.hash, ChunkCount: len(result.records), Size: result.size, ModTimeUnixNano: result.modNano}
 		i.index.ChunksByFile[result.rel] = result.records
+		pendingWrites++
+		if err := flushIndex(false); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
 		if i.progressFn != nil {
 			i.progressFn(IndexProgress{File: result.rel, Action: "indexed", Kind: result.kind, Chunks: len(result.records)})
 		}
@@ -175,7 +220,10 @@ func (i *Indexer) Index(ctx context.Context) error {
 		}
 	}
 	i.index.EmbeddingSignature = i.cfg.embeddingSignature()
-	return saveIndex(indexPath(i.projectRoot), i.index)
+	if err := flushIndex(true); err != nil && firstErr == nil {
+		firstErr = err
+	}
+	return firstErr
 }
 
 func (i *Indexer) fileChunks(relPath, content string) []Chunk {

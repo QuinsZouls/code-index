@@ -86,17 +86,32 @@ Supported providers:
 
 ### `init`
 
-Creates `.codeindex/settings.json` and ensures `.gitignore` excludes `.codeindex/`.
+Creates `.codeindex/settings.json` from `~/.codeindex/default_settings.json` when present, then ensures `.gitignore` excludes `.codeindex/`.
 
 ### `index`
 
 Scans the repository, chunks text, sends embeddings requests, and persists the index in `.codeindex/index.gob`.
 
-Output includes:
+Default output:
+- spinner while indexing
+- final count of indexed files
+
+Verbose output:
 - `new`
 - `updated`
 - `unchanged`
-- spinner while indexing
+- final file/chunk summary
+
+Example:
+
+```bash
+codeindex index -path . --verbose
+```
+
+Config options:
+
+- `worker_count`: override parallel file workers
+- `checkpoint_every`: override how often the `.gob` checkpoint is flushed
 
 ### `search`
 

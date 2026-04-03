@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -22,6 +23,19 @@ func TestDefaultConfigNormalize(t *testing.T) {
 	}
 	if !containsString(cfg.ExcludePatterns, "**/.codeindex") {
 		t.Fatal("expected .codeindex to be excluded")
+	}
+	if cfg.WorkerCount != 0 || cfg.CheckpointEvery != 0 {
+		t.Fatalf("unexpected defaults: %#v", cfg)
+	}
+}
+
+func TestConfigSupportsIndexerTuning(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.WorkerCount = 12
+	cfg.CheckpointEvery = 25
+	cfg.normalize()
+	if cfg.WorkerCount != 12 || cfg.CheckpointEvery != 25 {
+		t.Fatalf("tuning values lost: %#v", cfg)
 	}
 }
 
@@ -58,16 +72,56 @@ func TestInitProjectCreatesGitignore(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := initProject(root); err != nil {
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, settingsDirName), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(filepath.Join(root, ".gitignore"))
+	t.Setenv("HOME", home)
+	defaultCfg := defaultConfig()
+	defaultCfg.Embedding.Model = "custom-model"
+	data, err := json.MarshalIndent(defaultCfg, "", "  ")
 	if err != nil {
 		t.Fatal(err)
 	}
-	content := string(data)
+	if err := os.WriteFile(filepath.Join(home, settingsDirName, "default_settings.json"), append(data, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := initProject(root); err != nil {
+		t.Fatal(err)
+	}
+	projectCfg, err := loadConfig(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projectCfg.Embedding.Model != "custom-model" {
+		t.Fatalf("expected init to copy user defaults, got %#v", projectCfg.Embedding)
+	}
+	gitignoreData, err := os.ReadFile(filepath.Join(root, ".gitignore"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(gitignoreData)
 	if !strings.Contains(content, "/.codeindex/") {
 		t.Fatalf("gitignore missing .codeindex entry: %q", content)
+	}
+}
+
+func TestInitProjectIgnoresMissingUserDefaults(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if _, err := initProject(root); err != nil {
+		t.Fatal(err)
+	}
+	projectCfg, err := loadConfig(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projectCfg.Embedding.Model != defaultConfig().Embedding.Model {
+		t.Fatalf("unexpected default model: %#v", projectCfg.Embedding)
 	}
 }
 

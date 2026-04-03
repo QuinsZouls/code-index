@@ -113,3 +113,23 @@ func TestIndexerHelpers(t *testing.T) {
 		t.Fatalf("Status() = %#v", got)
 	}
 }
+
+func TestIndexerRespectsConfigTuning(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.go"), []byte("alpha"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := defaultConfig()
+	cfg.IncludePatterns = []string{"**/*.go"}
+	cfg.WorkerCount = 1
+	cfg.CheckpointEvery = 1
+	cfg.Embedding = EmbeddingConfig{Provider: "openai-compatible", Model: "fake"}
+	provider := &stubEmbeddingProvider{vecs: map[string][]float32{"alpha": {1, 0}}}
+	indexer := &Indexer{projectRoot: root, cfg: cfg, provider: provider, index: newIndexData(cfg.embeddingSignature())}
+	if err := indexer.Index(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if provider.calls != 1 {
+		t.Fatalf("Embed calls = %d, want 1", provider.calls)
+	}
+}

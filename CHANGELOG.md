@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.2
+
+### Changed
+
+- `init` now seeds project settings from the user's home default settings when available.
+- The indexer reads nested `.gitignore` files and supports configurable worker/checkpoint settings.
+- Default index output is quieter unless `--verbose` is used.
+
 ## 0.1.1
 
 ### Changed

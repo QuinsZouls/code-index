@@ -88,11 +88,11 @@ func TestCLIE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if out := run("index", "-path", root); !strings.Contains(out, "[+] hello.go (new") {
+	if out := run("index", "-path", root); !strings.Contains(out, "indexed 1 files") {
 		t.Fatalf("index output = %q", out)
 	}
-	if out := run("index", "-path", root); !strings.Contains(out, "[=] hello.go (unchanged)") {
-		t.Fatalf("second index output = %q", out)
+	if out := run("index", "-path", root, "--verbose"); !strings.Contains(out, "[=] hello.go (unchanged)") {
+		t.Fatalf("verbose output = %q", out)
 	}
 	if out := run("search", "-path", root, "hello"); !strings.Contains(out, "hello.go") {
 		t.Fatalf("search output = %q", out)
