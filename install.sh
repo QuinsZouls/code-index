@@ -62,7 +62,7 @@ download_unix() {
   asset="codeindex-${os}-${arch}.tar.gz"
   url="$(github_release_url "$asset")"
   tmp_dir="$(mktemp -d)"
-  trap 'rm -rf "$tmp_dir"' EXIT
+  trap 'rm -rf "${tmp_dir:-}"' EXIT
 
   mkdir -p "$INSTALL_DIR"
   curl -fsSL "$url" -o "$tmp_dir/$asset"
