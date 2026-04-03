@@ -58,18 +58,6 @@ func findProjectRoot(start string) (string, error) {
 	}
 }
 
-func mustProjectRoot() string {
-	if root := os.Getenv("COCOINDEX_CODE_ROOT_PATH"); root != "" {
-		return root
-	}
-	root, err := findProjectRoot(".")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	return root
-}
-
 func runInit(args []string) {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
 	path := fs.String("path", ".", "project root")
