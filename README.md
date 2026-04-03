@@ -19,11 +19,33 @@ codeindex           Built binary
 ## Quick Start
 
 ```bash
-./codeindex init -path .
-./codeindex index -path .
-./codeindex search -path . "authentication logic"
-./codeindex status -path .
+curl -fsSL https://raw.githubusercontent.com/QuinsZouls/code-index/master/install.sh | bash
+codeindex version
+codeindex init -path .
+codeindex index -path .
+codeindex search -path . "authentication logic"
+codeindex status -path .
 ```
+
+## Installation
+
+### Recommended
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/QuinsZouls/code-index/master/install.sh | bash
+```
+
+Windows is detected automatically; the same script will download the `.zip` release and install the `.exe`.
+
+### Go users
+
+```bash
+go install github.com/QuinsZouls/code-index/src@latest
+```
+
+### Manual
+
+Download the matching asset from GitHub Releases and copy `codeindex` into your PATH.
 
 ## Configuration
 
