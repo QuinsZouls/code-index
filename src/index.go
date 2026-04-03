@@ -48,6 +48,11 @@ func (i *Indexer) Index(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	currentSig := i.cfg.embeddingSignature()
+	prevFiles := make(map[string]FileState, len(i.index.Files))
+	for path, state := range i.index.Files {
+		prevFiles[path] = state
+	}
 	seen := map[string]struct{}{}
 	type fileJob struct {
 		rel string
@@ -90,8 +95,8 @@ func (i *Indexer) Index(ctx context.Context) error {
 			}
 			modNano := info.ModTime().UTC().UnixNano()
 			size := info.Size()
-			prev, ok := i.index.Files[job.rel]
-			if ok && prev.Size == size && prev.ModTimeUnixNano == modNano && i.index.EmbeddingSignature == i.cfg.embeddingSignature() {
+			prev, ok := prevFiles[job.rel]
+			if ok && prev.Size == size && prev.ModTimeUnixNano == modNano && i.index.EmbeddingSignature == currentSig {
 				results <- fileResult{rel: job.rel, hash: prev.Hash, size: size, modNano: modNano, kind: "unchanged", skipped: true}
 				continue
 			}
