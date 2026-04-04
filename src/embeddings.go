@@ -72,13 +72,120 @@ func (r *simpleRateLimiter) wait(ctx context.Context) error {
 	return nil
 }
 
+type retryConfig struct {
+	maxRetries     int
+	initialDelay   time.Duration
+	maxDelay       time.Duration
+	currentAttempt int
+	currentDelay   time.Duration
+}
+
+func newRetryConfig(cfg EmbeddingConfig) *retryConfig {
+	maxRetries := cfg.MaxRetries
+	if maxRetries <= 0 {
+		return nil
+	}
+	initialDelay, _ := time.ParseDuration(cfg.RetryInitialDelay)
+	if initialDelay == 0 {
+		initialDelay = 1 * time.Second
+	}
+	maxDelay, _ := time.ParseDuration(cfg.RetryMaxDelay)
+	if maxDelay == 0 {
+		maxDelay = 30 * time.Second
+	}
+	return &retryConfig{
+		maxRetries:   maxRetries,
+		initialDelay: initialDelay,
+		maxDelay:     maxDelay,
+		currentDelay: initialDelay,
+	}
+}
+
+func (r *retryConfig) shouldRetry(err error) bool {
+	if r == nil {
+		return false
+	}
+	if r.currentAttempt >= r.maxRetries {
+		return false
+	}
+	return isRetryableError(err)
+}
+
+func (r *retryConfig) nextDelay() time.Duration {
+	if r == nil {
+		return 0
+	}
+	delay := r.currentDelay
+	r.currentDelay = r.currentDelay * 2
+	if r.currentDelay > r.maxDelay {
+		r.currentDelay = r.maxDelay
+	}
+	r.currentAttempt++
+	return delay
+}
+
+func (r *retryConfig) reset() {
+	if r != nil {
+		r.currentAttempt = 0
+		r.currentDelay = r.initialDelay
+	}
+}
+
+func isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return false
+	}
+	errStr := err.Error()
+	if strings.Contains(errStr, "rate limit") {
+		return true
+	}
+	if strings.Contains(errStr, "timeout") || strings.Contains(errStr, "deadline exceeded") {
+		return true
+	}
+	if strings.Contains(errStr, "connection refused") || strings.Contains(errStr, "connection reset") {
+		return true
+	}
+	if strings.Contains(errStr, "temporary") || strings.Contains(errStr, "transient") {
+		return true
+	}
+	if strings.Contains(errStr, "API error") {
+		if strings.Contains(errStr, "503") || strings.Contains(errStr, "502") || strings.Contains(errStr, "429") {
+			return true
+		}
+	}
+	return false
+}
+
+func retryWithBackoff(ctx context.Context, retryCfg *retryConfig, fn func() error) error {
+	retryCfg.reset()
+	for {
+		err := fn()
+		if err == nil {
+			return nil
+		}
+		if !retryCfg.shouldRetry(err) {
+			return err
+		}
+		delay := retryCfg.nextDelay()
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
+
 type openAICompatibleProvider struct {
-	baseURL string
-	model   string
-	apiKey  string
-	headers map[string]string
-	client  *http.Client
-	limiter *simpleRateLimiter
+	baseURL  string
+	model    string
+	apiKey   string
+	headers  map[string]string
+	client   *http.Client
+	limiter  *simpleRateLimiter
+	retryCfg *retryConfig
 }
 
 func newOpenAICompatibleProvider(cfg EmbeddingConfig) *openAICompatibleProvider {
@@ -87,12 +194,13 @@ func newOpenAICompatibleProvider(cfg EmbeddingConfig) *openAICompatibleProvider 
 		timeout = 60 * time.Second
 	}
 	return &openAICompatibleProvider{
-		baseURL: strings.TrimRight(cfg.BaseURL, "/"),
-		model:   cfg.Model,
-		apiKey:  apiKey(cfg),
-		headers: cfg.Headers,
-		client:  &http.Client{Timeout: timeout},
-		limiter: newSimpleRateLimiter(cfg.RateLimit),
+		baseURL:  strings.TrimRight(cfg.BaseURL, "/"),
+		model:    cfg.Model,
+		apiKey:   apiKey(cfg),
+		headers:  cfg.Headers,
+		client:   &http.Client{Timeout: timeout},
+		limiter:  newSimpleRateLimiter(cfg.RateLimit),
+		retryCfg: newRetryConfig(cfg),
 	}
 }
 
@@ -103,9 +211,22 @@ func (p *openAICompatibleProvider) Embed(ctx context.Context, texts []string) ([
 	if p.baseURL == "" {
 		return nil, errors.New("embedding base_url is required")
 	}
-	if err := p.limiter.wait(ctx); err != nil {
-		return nil, fmt.Errorf("rate limit: %w", err)
+	var vecs [][]float32
+	var lastErr error
+	err := retryWithBackoff(ctx, p.retryCfg, func() error {
+		if err := p.limiter.wait(ctx); err != nil {
+			return fmt.Errorf("rate limit: %w", err)
+		}
+		vecs, lastErr = p.doRequest(ctx, texts)
+		return lastErr
+	})
+	if err != nil {
+		return nil, err
 	}
+	return vecs, nil
+}
+
+func (p *openAICompatibleProvider) doRequest(ctx context.Context, texts []string) ([][]float32, error) {
 	body := map[string]any{"model": p.model, "input": texts}
 	data, _ := json.Marshal(body)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/embeddings", bytes.NewReader(data))
@@ -147,11 +268,12 @@ func (p *openAICompatibleProvider) Embed(ctx context.Context, texts []string) ([
 }
 
 type geminiProvider struct {
-	baseURL string
-	model   string
-	apiKey  string
-	client  *http.Client
-	limiter *simpleRateLimiter
+	baseURL  string
+	model    string
+	apiKey   string
+	client   *http.Client
+	limiter  *simpleRateLimiter
+	retryCfg *retryConfig
 }
 
 func newGeminiProvider(cfg EmbeddingConfig) *geminiProvider {
@@ -160,11 +282,12 @@ func newGeminiProvider(cfg EmbeddingConfig) *geminiProvider {
 		timeout = 60 * time.Second
 	}
 	return &geminiProvider{
-		baseURL: strings.TrimRight(cfg.BaseURL, "/"),
-		model:   cfg.Model,
-		apiKey:  apiKey(cfg),
-		client:  &http.Client{Timeout: timeout},
-		limiter: newSimpleRateLimiter(cfg.RateLimit),
+		baseURL:  strings.TrimRight(cfg.BaseURL, "/"),
+		model:    cfg.Model,
+		apiKey:   apiKey(cfg),
+		client:   &http.Client{Timeout: timeout},
+		limiter:  newSimpleRateLimiter(cfg.RateLimit),
+		retryCfg: newRetryConfig(cfg),
 	}
 }
 
@@ -177,54 +300,68 @@ func (p *geminiProvider) Embed(ctx context.Context, texts []string) ([][]float32
 	}
 	vecs := make([][]float32, 0, len(texts))
 	for _, text := range texts {
-		if err := p.limiter.wait(ctx); err != nil {
-			return nil, fmt.Errorf("rate limit: %w", err)
-		}
-		body := map[string]any{
-			"content": map[string]any{
-				"parts": []map[string]string{{"text": text}},
-			},
-		}
-		data, _ := json.Marshal(body)
-		endpoint, err := url.JoinPath(p.baseURL, "models", p.model+":embedContent")
+		var vec []float32
+		var lastErr error
+		err := retryWithBackoff(ctx, p.retryCfg, func() error {
+			if err := p.limiter.wait(ctx); err != nil {
+				return fmt.Errorf("rate limit: %w", err)
+			}
+			vec, lastErr = p.doRequest(ctx, text)
+			return lastErr
+		})
 		if err != nil {
 			return nil, err
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
-		if err != nil {
-			return nil, err
-		}
-		req.Header.Set("Content-Type", "application/json")
-		if p.apiKey != "" {
-			req.Header.Set("x-goog-api-key", p.apiKey)
-		}
-		resp, err := p.client.Do(req)
-		if err != nil {
-			return nil, err
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode >= 300 {
-			b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-			return nil, fmt.Errorf("gemini embedding error: %s: %s", resp.Status, strings.TrimSpace(string(b)))
-		}
-		var out struct {
-			Embedding struct {
-				Values []float32 `json:"values"`
-			} `json:"embedding"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-			return nil, err
-		}
-		vecs = append(vecs, normalizeVector(out.Embedding.Values))
+		vecs = append(vecs, vec)
 	}
 	return vecs, nil
 }
 
+func (p *geminiProvider) doRequest(ctx context.Context, text string) ([]float32, error) {
+	body := map[string]any{
+		"content": map[string]any{
+			"parts": []map[string]string{{"text": text}},
+		},
+	}
+	data, _ := json.Marshal(body)
+	endpoint, err := url.JoinPath(p.baseURL, "models", p.model+":embedContent")
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if p.apiKey != "" {
+		req.Header.Set("x-goog-api-key", p.apiKey)
+	}
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("gemini embedding error: %s: %s", resp.Status, strings.TrimSpace(string(b)))
+	}
+	var out struct {
+		Embedding struct {
+			Values []float32 `json:"values"`
+		} `json:"embedding"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return normalizeVector(out.Embedding.Values), nil
+}
+
 type ollamaProvider struct {
-	baseURL string
-	model   string
-	client  *http.Client
-	limiter *simpleRateLimiter
+	baseURL  string
+	model    string
+	client   *http.Client
+	limiter  *simpleRateLimiter
+	retryCfg *retryConfig
 }
 
 func newOllamaProvider(cfg EmbeddingConfig) *ollamaProvider {
@@ -233,10 +370,11 @@ func newOllamaProvider(cfg EmbeddingConfig) *ollamaProvider {
 		timeout = 60 * time.Second
 	}
 	return &ollamaProvider{
-		baseURL: strings.TrimRight(cfg.BaseURL, "/"),
-		model:   cfg.Model,
-		client:  &http.Client{Timeout: timeout},
-		limiter: newSimpleRateLimiter(cfg.RateLimit),
+		baseURL:  strings.TrimRight(cfg.BaseURL, "/"),
+		model:    cfg.Model,
+		client:   &http.Client{Timeout: timeout},
+		limiter:  newSimpleRateLimiter(cfg.RateLimit),
+		retryCfg: newRetryConfig(cfg),
 	}
 }
 
@@ -249,34 +387,47 @@ func (p *ollamaProvider) Embed(ctx context.Context, texts []string) ([][]float32
 	}
 	vecs := make([][]float32, 0, len(texts))
 	for _, text := range texts {
-		if err := p.limiter.wait(ctx); err != nil {
-			return nil, fmt.Errorf("rate limit: %w", err)
-		}
-		body := map[string]any{"model": p.model, "prompt": text}
-		data, _ := json.Marshal(body)
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/api/embeddings", bytes.NewReader(data))
+		var vec []float32
+		var lastErr error
+		err := retryWithBackoff(ctx, p.retryCfg, func() error {
+			if err := p.limiter.wait(ctx); err != nil {
+				return fmt.Errorf("rate limit: %w", err)
+			}
+			vec, lastErr = p.doRequest(ctx, text)
+			return lastErr
+		})
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set("Content-Type", "application/json")
-		resp, err := p.client.Do(req)
-		if err != nil {
-			return nil, err
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode >= 300 {
-			b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-			return nil, fmt.Errorf("ollama embedding error: %s: %s", resp.Status, strings.TrimSpace(string(b)))
-		}
-		var out struct {
-			Embedding []float32 `json:"embedding"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-			return nil, err
-		}
-		vecs = append(vecs, normalizeVector(out.Embedding))
+		vecs = append(vecs, vec)
 	}
 	return vecs, nil
+}
+
+func (p *ollamaProvider) doRequest(ctx context.Context, text string) ([]float32, error) {
+	body := map[string]any{"model": p.model, "prompt": text}
+	data, _ := json.Marshal(body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/api/embeddings", bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("ollama embedding error: %s: %s", resp.Status, strings.TrimSpace(string(b)))
+	}
+	var out struct {
+		Embedding []float32 `json:"embedding"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return normalizeVector(out.Embedding), nil
 }
 
 func normalizeVector(vec []float32) []float32 {

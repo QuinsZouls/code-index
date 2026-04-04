@@ -178,3 +178,41 @@ func TestConfigWithRateLimitRoundTrip(t *testing.T) {
 		t.Fatalf("Timeout = %q, want 45s", loaded.Embedding.Timeout)
 	}
 }
+
+func TestEmbeddingConfigRetryDefaults(t *testing.T) {
+	cfg := EmbeddingConfig{}
+	cfg.normalize()
+	if cfg.MaxRetries != 0 {
+		t.Fatalf("MaxRetries = %d, want 0 (disabled by default)", cfg.MaxRetries)
+	}
+	if cfg.RetryInitialDelay != "1s" {
+		t.Fatalf("RetryInitialDelay = %q, want 1s", cfg.RetryInitialDelay)
+	}
+	if cfg.RetryMaxDelay != "30s" {
+		t.Fatalf("RetryMaxDelay = %q, want 30s", cfg.RetryMaxDelay)
+	}
+}
+
+func TestConfigWithRetryRoundTrip(t *testing.T) {
+	root := t.TempDir()
+	cfg := defaultConfig()
+	cfg.Embedding.MaxRetries = 3
+	cfg.Embedding.RetryInitialDelay = "2s"
+	cfg.Embedding.RetryMaxDelay = "20s"
+	if err := saveConfig(root, cfg); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := loadConfig(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Embedding.MaxRetries != 3 {
+		t.Fatalf("MaxRetries = %d, want 3", loaded.Embedding.MaxRetries)
+	}
+	if loaded.Embedding.RetryInitialDelay != "2s" {
+		t.Fatalf("RetryInitialDelay = %q, want 2s", loaded.Embedding.RetryInitialDelay)
+	}
+	if loaded.Embedding.RetryMaxDelay != "20s" {
+		t.Fatalf("RetryMaxDelay = %q, want 20s", loaded.Embedding.RetryMaxDelay)
+	}
+}

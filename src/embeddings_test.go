@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -266,5 +267,180 @@ func TestOllamaProviderWithRateLimit(t *testing.T) {
 	}
 	if elapsed < 150*time.Millisecond {
 		t.Fatalf("elapsed = %v, expected >= 200ms for 2 requests at 5/sec", elapsed)
+	}
+}
+
+func TestRetryConfigNil(t *testing.T) {
+	cfg := newRetryConfig(EmbeddingConfig{MaxRetries: 0})
+	if cfg != nil {
+		t.Fatal("expected nil retry config for max_retries=0")
+	}
+}
+
+func TestRetryConfigBasic(t *testing.T) {
+	cfg := newRetryConfig(EmbeddingConfig{
+		MaxRetries:        3,
+		RetryInitialDelay: "1s",
+		RetryMaxDelay:     "10s",
+	})
+	if cfg == nil {
+		t.Fatal("expected non-nil retry config")
+	}
+	if cfg.maxRetries != 3 {
+		t.Fatalf("maxRetries = %d, want 3", cfg.maxRetries)
+	}
+	if cfg.initialDelay != 1*time.Second {
+		t.Fatalf("initialDelay = %v, want 1s", cfg.initialDelay)
+	}
+	if cfg.maxDelay != 10*time.Second {
+		t.Fatalf("maxDelay = %v, want 10s", cfg.maxDelay)
+	}
+}
+
+func TestRetryConfigExponentialBackoff(t *testing.T) {
+	cfg := newRetryConfig(EmbeddingConfig{
+		MaxRetries:        5,
+		RetryInitialDelay: "1s",
+		RetryMaxDelay:     "16s",
+	})
+	cfg.reset()
+	delay1 := cfg.nextDelay()
+	delay2 := cfg.nextDelay()
+	delay3 := cfg.nextDelay()
+	delay4 := cfg.nextDelay()
+	if delay1 != 1*time.Second {
+		t.Fatalf("delay1 = %v, want 1s", delay1)
+	}
+	if delay2 != 2*time.Second {
+		t.Fatalf("delay2 = %v, want 2s", delay2)
+	}
+	if delay3 != 4*time.Second {
+		t.Fatalf("delay3 = %v, want 4s", delay3)
+	}
+	if delay4 != 8*time.Second {
+		t.Fatalf("delay4 = %v, want 8s", delay4)
+	}
+}
+
+func TestRetryConfigMaxDelay(t *testing.T) {
+	cfg := newRetryConfig(EmbeddingConfig{
+		MaxRetries:        5,
+		RetryInitialDelay: "1s",
+		RetryMaxDelay:     "4s",
+	})
+	cfg.reset()
+	cfg.nextDelay()
+	cfg.nextDelay()
+	delay3 := cfg.nextDelay()
+	delay4 := cfg.nextDelay()
+	if delay3 != 4*time.Second {
+		t.Fatalf("delay3 = %v, want 4s (max)", delay3)
+	}
+	if delay4 != 4*time.Second {
+		t.Fatalf("delay4 = %v, want 4s (max)", delay4)
+	}
+}
+
+func TestIsRetryableError(t *testing.T) {
+	if isRetryableError(nil) {
+		t.Fatal("nil error should not be retryable")
+	}
+	if isRetryableError(context.Canceled) {
+		t.Fatal("context canceled should not be retryable")
+	}
+	if isRetryableError(context.DeadlineExceeded) {
+		t.Fatal("deadline exceeded should not be retryable")
+	}
+	if !isRetryableError(fmt.Errorf("rate limit exceeded")) {
+		t.Fatal("rate limit error should be retryable")
+	}
+	if !isRetryableError(fmt.Errorf("connection refused")) {
+		t.Fatal("connection refused should be retryable")
+	}
+	if !isRetryableError(fmt.Errorf("timeout error")) {
+		t.Fatal("timeout error should be retryable")
+	}
+	if !isRetryableError(fmt.Errorf("embedding API error: 503 Service Unavailable")) {
+		t.Fatal("503 error should be retryable")
+	}
+	if !isRetryableError(fmt.Errorf("embedding API error: 502 Bad Gateway")) {
+		t.Fatal("502 error should be retryable")
+	}
+	if !isRetryableError(fmt.Errorf("embedding API error: 429 Too Many Requests")) {
+		t.Fatal("429 error should be retryable")
+	}
+	if isRetryableError(fmt.Errorf("embedding API error: 401 Unauthorized")) {
+		t.Fatal("401 error should not be retryable")
+	}
+}
+
+func TestRetryWithBackoffSuccess(t *testing.T) {
+	cfg := newRetryConfig(EmbeddingConfig{
+		MaxRetries:        3,
+		RetryInitialDelay: "100ms",
+		RetryMaxDelay:     "1s",
+	})
+	attempts := 0
+	err := retryWithBackoff(context.Background(), cfg, func() error {
+		attempts++
+		if attempts < 2 {
+			return fmt.Errorf("temporary error")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want 2", attempts)
+	}
+}
+
+func TestRetryWithBackoffMaxRetries(t *testing.T) {
+	cfg := newRetryConfig(EmbeddingConfig{
+		MaxRetries:        2,
+		RetryInitialDelay: "50ms",
+		RetryMaxDelay:     "200ms",
+	})
+	attempts := 0
+	err := retryWithBackoff(context.Background(), cfg, func() error {
+		attempts++
+		return fmt.Errorf("temporary error")
+	})
+	if err == nil {
+		t.Fatal("expected error after max retries")
+	}
+	if attempts != 3 {
+		t.Fatalf("attempts = %d, want 3 (initial + 2 retries)", attempts)
+	}
+}
+
+func TestOpenAICompatibleProviderWithRetry(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts < 3 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{"embedding": []float32{1, 0}}},
+		})
+	}))
+	defer server.Close()
+
+	p := newOpenAICompatibleProvider(EmbeddingConfig{
+		BaseURL:           server.URL,
+		Model:             "test",
+		MaxRetries:        3,
+		RetryInitialDelay: "100ms",
+		RetryMaxDelay:     "1s",
+	})
+	_, err := p.Embed(context.Background(), []string{"test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 3 {
+		t.Fatalf("attempts = %d, want 3", attempts)
 	}
 }
