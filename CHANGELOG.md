@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.3
+
+### Added
+
+- Configurable rate limiting for embedding API requests to prevent throttling.
+- Configurable HTTP timeout for embedding requests.
+- Retry system with exponential backoff for transient errors (429, 502, 503, timeouts).
+- Automatic skip to next file when all retries fail during indexing.
+- New configuration fields: `rate_limit`, `timeout`, `max_retries`, `retry_initial_delay`, `retry_max_delay`.
+- Hybrid search combining vector and keyword matching (TF-IDF).
+- Improved CLI output with better progress feedback.
+
+### Changed
+
+- Enhanced error handling for embedding providers.
+- Updated documentation with rate limiting, timeout, and retry configuration examples.
+- Added 23 new unit tests for retry and rate limiting logic.
+
 ## 0.1.2
 
 ### Changed
