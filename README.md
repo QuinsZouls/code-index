@@ -1,4 +1,4 @@
-# cocoindex-code
+# code-index
 
 Semantic code search for codebases
 
