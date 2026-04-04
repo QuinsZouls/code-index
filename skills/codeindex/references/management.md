@@ -101,16 +101,37 @@ codeindex search -path . "authentication logic"
 
 Options:
 - `-path`: Project root directory (default: `.`)
-- `-limit`: Max results (default: 5)
+- `-limit`: Max results (default: from config `search_limit`)
 - `-offset`: Offset for pagination (default: 0)
 - `-lang`: Comma-separated language filter
 - `-glob`: Comma-separated path glob filter
+- `-files`: Show only file paths without content (compact output)
 
 Example with filters:
 
 ```bash
 codeindex search -path . -lang go,python -glob "src/**" "database connection"
 ```
+
+Example with files-only mode:
+
+```bash
+codeindex search -path . -files -limit 20 "api endpoint"
+```
+
+- **Files only** (`-files`): Show only file paths without content (compact output).
+  ```bash
+  codeindex search -path . -files "api endpoint"
+  ```
+
+- **Hybrid search** (`-hybrid`): Combine vector + keyword matching for better precision.
+  ```bash
+  codeindex search -path . -hybrid "EmbeddingProvider interface"
+  ```
+
+Output formats:
+- **Normal**: Shows full chunk content with file path, line range, language, and score
+- **Files mode** (`-files`): Compact list showing only file paths and metadata
 
 ### `status`
 

@@ -23,6 +23,8 @@ To perform a semantic search:
 codeindex search -path . <query terms>
 ```
 
+**Note**: Flags must precede the query string.
+
 The query should describe the concept, functionality, or behavior to find, not exact code syntax. For example:
 
 ```bash
@@ -44,6 +46,45 @@ codeindex search -path . error handling retry logic
   ```bash
   codeindex search -path . -glob 'src/api/**' request validation
   ```
+
+- **Limit results** (`-limit`): maximum number of results (default: from config `search_limit`).
+
+  ```bash
+  codeindex search -path . -limit 10 database schema
+  ```
+
+- **Files only** (`-files`): show only file paths and metadata without content.
+
+  ```bash
+  codeindex search -path . -files database schema
+  ```
+
+- **Hybrid search** (`-hybrid`): combine vector embeddings with keyword matching (TF-IDF) for better precision with technical terms.
+
+  ```bash
+  codeindex search -path . -hybrid "EmbeddingProvider interface"
+  ```
+
+- **Score threshold**: Results below `score_threshold` (from config) are automatically filtered out.
+
+**Hybrid Search:**
+
+Hybrid search combines semantic vector search with keyword matching:
+
+- **Vector search**: Understands semantic meaning ("database connection" → connection pooling code)
+- **Keyword matching**: Finds exact terms ("EmbeddingProvider" → exact interface name)
+- **Combined score**: `vector_weight * vector_score + keyword_weight * keyword_score`
+
+Enable in config:
+```json
+{
+  "hybrid_search": true,
+  "vector_weight": 0.7,
+  "keyword_weight": 0.3
+}
+```
+
+Or use per-query with `-hybrid` flag.
 
 ### Pagination
 

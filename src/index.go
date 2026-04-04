@@ -19,6 +19,7 @@ type SearchOptions struct {
 	Offset    int
 	Languages []string
 	Paths     []string
+	UseHybrid bool
 }
 
 type Indexer struct {
@@ -156,7 +157,6 @@ func (i *Indexer) Index(ctx context.Context) error {
 				records = append(records, ChunkRecord{
 					FilePath:  job.rel,
 					Language:  lang,
-					Content:   ch.Content,
 					StartLine: ch.StartLine,
 					EndLine:   ch.EndLine,
 					Embedding: vecs[idx],
@@ -271,6 +271,9 @@ func (i *Indexer) Search(ctx context.Context, opts SearchOptions) ([]SearchResul
 	if opts.Offset < 0 {
 		opts.Offset = 0
 	}
+
+	useHybrid := i.cfg.HybridSearch || opts.UseHybrid
+
 	queryVecs, err := i.provider.Embed(ctx, []string{opts.Query})
 	if err != nil {
 		return nil, err
@@ -279,6 +282,15 @@ func (i *Indexer) Search(ctx context.Context, opts SearchOptions) ([]SearchResul
 		return nil, nil
 	}
 	queryVec := queryVecs[0]
+
+	var hybridScorer *HybridScorer
+	var queryTerms []string
+
+	if useHybrid {
+		queryTerms = extractQueryTerms(opts.Query)
+		hybridScorer = newHybridScorer(i.cfg.VectorWeight, i.cfg.KeywordWeight, i.index.ChunksByFile, i.projectRoot)
+	}
+
 	results := make([]SearchResult, 0, 32)
 	for _, chunks := range i.index.ChunksByFile {
 		for _, ch := range chunks {
@@ -288,14 +300,21 @@ func (i *Indexer) Search(ctx context.Context, opts SearchOptions) ([]SearchResul
 			if len(opts.Paths) > 0 && !matchesAnyGlob(opts.Paths, ch.FilePath) {
 				continue
 			}
-			score := cosine(queryVec, ch.Embedding)
+			vectorScore := cosine(queryVec, ch.Embedding)
+
+			var finalScore float64
+			if useHybrid && hybridScorer != nil {
+				finalScore = hybridScorer.combineScores(vectorScore, ch.FilePath, ch.StartLine, ch.EndLine, queryTerms)
+			} else {
+				finalScore = vectorScore
+			}
+
 			results = append(results, SearchResult{
 				FilePath:  ch.FilePath,
 				Language:  ch.Language,
-				Content:   ch.Content,
 				StartLine: ch.StartLine,
 				EndLine:   ch.EndLine,
-				Score:     score,
+				Score:     finalScore,
 			})
 		}
 	}

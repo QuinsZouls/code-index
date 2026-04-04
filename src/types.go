@@ -9,10 +9,8 @@ type Chunk struct {
 type ChunkRecord struct {
 	FilePath  string    `json:"file_path"`
 	Language  string    `json:"language"`
-	Content   string    `json:"content"`
 	StartLine int       `json:"start_line"`
 	EndLine   int       `json:"end_line"`
-	Score     float64   `json:"score,omitempty"`
 	Embedding []float32 `json:"-"`
 	ChunkHash string    `json:"chunk_hash"`
 }

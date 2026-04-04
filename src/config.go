@@ -62,6 +62,11 @@ type Config struct {
 	MinChunkSize      int               `json:"min_chunk_size"`
 	WorkerCount       int               `json:"worker_count,omitempty"`
 	CheckpointEvery   int               `json:"checkpoint_every,omitempty"`
+	SearchLimit       int               `json:"search_limit,omitempty"`
+	ScoreThreshold    float64           `json:"score_threshold,omitempty"`
+	HybridSearch      bool              `json:"hybrid_search,omitempty"`
+	VectorWeight      float64           `json:"vector_weight,omitempty"`
+	KeywordWeight     float64           `json:"keyword_weight,omitempty"`
 	Embedding         EmbeddingConfig   `json:"embedding"`
 }
 
@@ -85,6 +90,11 @@ func defaultConfig() Config {
 		MinChunkSize:      8,
 		WorkerCount:       0,
 		CheckpointEvery:   0,
+		SearchLimit:       5,
+		ScoreThreshold:    0.3,
+		HybridSearch:      false,
+		VectorWeight:      0.7,
+		KeywordWeight:     0.3,
 		Embedding: EmbeddingConfig{
 			Provider:  "openai",
 			Model:     "text-embedding-3-small",
@@ -120,6 +130,26 @@ func (c *Config) normalize() {
 	}
 	if c.CheckpointEvery < 0 {
 		c.CheckpointEvery = 0
+	}
+	if c.SearchLimit <= 0 {
+		c.SearchLimit = 5
+	}
+	if c.ScoreThreshold < 0 || c.ScoreThreshold > 1 {
+		c.ScoreThreshold = 0.3
+	}
+	if c.VectorWeight < 0 {
+		c.VectorWeight = 0.7
+	}
+	if c.KeywordWeight < 0 {
+		c.KeywordWeight = 0.3
+	}
+	if c.VectorWeight+c.KeywordWeight > 0 {
+		total := c.VectorWeight + c.KeywordWeight
+		c.VectorWeight /= total
+		c.KeywordWeight /= total
+	} else {
+		c.VectorWeight = 0.7
+		c.KeywordWeight = 0.3
 	}
 	c.Embedding.normalize()
 }
