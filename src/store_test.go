@@ -19,7 +19,6 @@ func TestIndexStoreRoundTrip(t *testing.T) {
 				{
 					FilePath:  "a.go",
 					Language:  "go",
-					Content:   "package main",
 					StartLine: 1,
 					EndLine:   1,
 					Embedding: []float32{1, 2},
@@ -44,7 +43,7 @@ func TestIndexStoreRoundTrip(t *testing.T) {
 	if !reflect.DeepEqual(loaded.Files, original.Files) {
 		t.Fatalf("Files = %#v, want %#v", loaded.Files, original.Files)
 	}
-	if got := loaded.ChunksByFile["a.go"][0]; got.FilePath != "a.go" || got.Language != "go" || got.Content != "package main" || got.ChunkHash != "chunk" {
+	if got := loaded.ChunksByFile["a.go"][0]; got.FilePath != "a.go" || got.Language != "go" || got.StartLine != 1 || got.EndLine != 1 || got.ChunkHash != "chunk" {
 		t.Fatalf("loaded chunk = %#v", got)
 	}
 }

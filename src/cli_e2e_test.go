@@ -97,6 +97,12 @@ func TestCLIE2E(t *testing.T) {
 	if out := run("search", "-path", root, "hello"); !strings.Contains(out, "hello.go") {
 		t.Fatalf("search output = %q", out)
 	}
+	if out := run("search", "-path", root, "-files", "hello"); !strings.Contains(out, "hello.go") {
+		t.Fatalf("search -files output = %q", out)
+	}
+	if out := run("search", "-path", root, "-files", "hello"); strings.Contains(out, "--- Result") {
+		t.Fatalf("search -files should not show content blocks: %q", out)
+	}
 	if out := run("status", "-path", root); !strings.Contains(out, "Files: 1") || !strings.Contains(out, "Chunks: 1") {
 		t.Fatalf("status output = %q", out)
 	}

@@ -46,7 +46,7 @@ func newOpenAICompatibleProvider(cfg EmbeddingConfig) *openAICompatibleProvider 
 		model:   cfg.Model,
 		apiKey:  apiKey(cfg),
 		headers: cfg.Headers,
-		client:  &http.Client{Timeout: 60 * time.Second},
+		client:  &http.Client{Timeout: 300 * time.Second},
 	}
 }
 
@@ -109,7 +109,7 @@ func newGeminiProvider(cfg EmbeddingConfig) *geminiProvider {
 		baseURL: strings.TrimRight(cfg.BaseURL, "/"),
 		model:   cfg.Model,
 		apiKey:  apiKey(cfg),
-		client:  &http.Client{Timeout: 60 * time.Second},
+		client:  &http.Client{Timeout: 300 * time.Second},
 	}
 }
 
@@ -172,7 +172,7 @@ func newOllamaProvider(cfg EmbeddingConfig) *ollamaProvider {
 	return &ollamaProvider{
 		baseURL: strings.TrimRight(cfg.BaseURL, "/"),
 		model:   cfg.Model,
-		client:  &http.Client{Timeout: 60 * time.Second},
+		client:  &http.Client{Timeout: 300 * time.Second},
 	}
 }
 

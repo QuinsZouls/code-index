@@ -170,6 +170,8 @@ Per-project. Controls which files to index and chunking parameters. Created by `
   "min_chunk_size": 8,
   "worker_count": 0,
   "checkpoint_every": 0,
+  "search_limit": 5,
+  "score_threshold": 0.3,
   "embedding": {
     "provider": "openrouter",
     "model": "qwen/qwen3-embedding-8b",
@@ -192,6 +194,11 @@ Per-project. Controls which files to index and chunking parameters. Created by `
 | `min_chunk_size` | Minimum chunk size in lines (default: `8`). |
 | `worker_count` | Parallel file workers. `0` = auto (default: `0`). |
 | `checkpoint_every` | How often to flush `.gob` checkpoint. `0` = at end only (default: `0`). |
+| `search_limit` | Default max results for search (default: `5`). Can be overridden with `-limit` flag. |
+| `score_threshold` | Minimum similarity score (0-1) to display results (default: `0.3`). Results below threshold are filtered out. |
+| `hybrid_search` | Enable hybrid search combining vector + keyword matching (default: `false`). Improves precision for exact term matches. |
+| `vector_weight` | Weight for vector similarity score in hybrid mode (default: `0.7`). Range: 0-1. |
+| `keyword_weight` | Weight for keyword TF-IDF score in hybrid mode (default: `0.3`). Range: 0-1. |
 | `embedding` | Optional. Project-specific embedding config. Overrides user-level settings. |
 
 ### Default Include Patterns
@@ -211,6 +218,40 @@ The default `include_patterns` covers:
 - Data: `**/*.sql`
 - Web: `**/*.html`, `**/*.css`
 - Docs: `**/*.md`
+
+### Hybrid Search
+
+Hybrid search combines **semantic vector search** with **keyword matching** (TF-IDF) for better precision:
+
+```json
+{
+  "hybrid_search": true,
+  "vector_weight": 0.7,
+  "keyword_weight": 0.3
+}
+```
+
+**When to use:**
+- Queries with specific technical terms (function names, API endpoints, identifiers)
+- Mixed queries (semantic intent + exact keywords)
+- When pure vector search misses obvious keyword matches
+
+**How it works:**
+- `vector_weight`: Semantic similarity score from embeddings
+- `keyword_weight`: TF-IDF score based on term frequency
+- Final score = `vector_weight * vector_score + keyword_weight * keyword_score`
+- Weights are automatically normalized if they don't sum to 1.0
+
+**Example weights:**
+- `0.8, 0.2`: Favor semantic matching (default)
+- `0.5, 0.5`: Equal importance
+- `0.3, 0.7`: Favor keyword matching (better for exact terms)
+
+You can also enable hybrid search per-query with the `-hybrid` flag:
+
+```bash
+codeindex search -path . -hybrid "EmbeddingProvider interface"
+```
 
 ### Editing Tips
 

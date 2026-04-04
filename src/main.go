@@ -124,10 +124,12 @@ func runIndex(args []string) {
 func runSearch(args []string) {
 	fs := flag.NewFlagSet("search", flag.ExitOnError)
 	path := fs.String("path", ".", "project root")
-	limit := fs.Int("limit", 5, "max results")
+	limit := fs.Int("limit", 0, "max results (0 = use config default)")
 	offset := fs.Int("offset", 0, "offset")
 	langArg := fs.String("lang", "", "comma-separated languages")
 	pathArg := fs.String("glob", "", "comma-separated path globs")
+	filesOnly := fs.Bool("files", false, "show only file paths without content")
+	hybrid := fs.Bool("hybrid", false, "use hybrid search (vector + keyword)")
 	_ = fs.Parse(args)
 	query := strings.TrimSpace(strings.Join(fs.Args(), " "))
 	if query == "" {
@@ -151,21 +153,52 @@ func runSearch(args []string) {
 	}
 	langs := splitCSV(*langArg)
 	globs := splitCSV(*pathArg)
+	searchLimit := *limit
+	if searchLimit <= 0 {
+		searchLimit = cfg.SearchLimit
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	results, err := indexer.Search(ctx, SearchOptions{Query: query, Limit: *limit, Offset: *offset, Languages: langs, Paths: globs})
+	fetchLimit := searchLimit * 3
+	if fetchLimit < 50 {
+		fetchLimit = 50
+	}
+	results, err := indexer.Search(ctx, SearchOptions{
+		Query:     query,
+		Limit:     fetchLimit,
+		Offset:    *offset,
+		Languages: langs,
+		Paths:     globs,
+		UseHybrid: cfg.HybridSearch || *hybrid,
+	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	if len(results) == 0 {
+	filtered := make([]SearchResult, 0, len(results))
+	for _, r := range results {
+		if r.Score >= cfg.ScoreThreshold {
+			filtered = append(filtered, r)
+		}
+	}
+	if len(filtered) > searchLimit {
+		filtered = filtered[:searchLimit]
+	}
+	if len(filtered) == 0 {
 		fmt.Println("No results found.")
 		return
 	}
-	for i, r := range results {
+	if *filesOnly {
+		for i, r := range filtered {
+			fmt.Printf("%d. %s:%d-%d [%s] (score: %.3f)\n", i+1, r.FilePath, r.StartLine, r.EndLine, r.Language, r.Score)
+		}
+		return
+	}
+	for i, r := range filtered {
+		content := readChunkContent(root, r.FilePath, r.StartLine, r.EndLine)
 		fmt.Printf("\n--- Result %d (score: %.3f) ---\n", i+1, r.Score)
 		fmt.Printf("File: %s:%d-%d [%s]\n", r.FilePath, r.StartLine, r.EndLine, r.Language)
-		fmt.Println(r.Content)
+		fmt.Println(content)
 	}
 }
 
@@ -215,6 +248,22 @@ func splitCSV(s string) []string {
 		}
 	}
 	return out
+}
+
+func readChunkContent(projectRoot, relPath string, startLine, endLine int) string {
+	absPath := filepath.Join(projectRoot, relPath)
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return fmt.Sprintf("[file unavailable: %v]", err)
+	}
+	lines := strings.Split(string(data), "\n")
+	if startLine < 1 || startLine > len(lines) {
+		return "[line range invalid]"
+	}
+	if endLine > len(lines) {
+		endLine = len(lines)
+	}
+	return strings.Join(lines[startLine-1:endLine], "\n")
 }
 
 type progressPrinter struct {
