@@ -27,6 +27,12 @@ codeindex search -path . "authentication logic"
 codeindex status -path .
 ```
 
+## Install skill
+
+```bash
+npx skills add QuinsZouls/code-index
+```
+
 ## Installation
 
 ### Recommended
