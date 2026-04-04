@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -32,21 +33,66 @@ func newEmbeddingProvider(cfg EmbeddingConfig) (EmbeddingProvider, error) {
 	}
 }
 
+type simpleRateLimiter struct {
+	interval time.Duration
+	mu       sync.Mutex
+	lastReq  time.Time
+}
+
+func newSimpleRateLimiter(requestsPerSecond int) *simpleRateLimiter {
+	if requestsPerSecond <= 0 {
+		return nil
+	}
+	return &simpleRateLimiter{
+		interval: time.Second / time.Duration(requestsPerSecond),
+	}
+}
+
+func (r *simpleRateLimiter) wait(ctx context.Context) error {
+	if r == nil {
+		return nil
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	elapsed := time.Since(r.lastReq)
+	if elapsed < r.interval {
+		select {
+		case <-time.After(r.interval - elapsed):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	r.lastReq = time.Now()
+	return nil
+}
+
 type openAICompatibleProvider struct {
 	baseURL string
 	model   string
 	apiKey  string
 	headers map[string]string
 	client  *http.Client
+	limiter *simpleRateLimiter
 }
 
 func newOpenAICompatibleProvider(cfg EmbeddingConfig) *openAICompatibleProvider {
+	timeout, _ := time.ParseDuration(cfg.Timeout)
+	if timeout == 0 {
+		timeout = 60 * time.Second
+	}
 	return &openAICompatibleProvider{
 		baseURL: strings.TrimRight(cfg.BaseURL, "/"),
 		model:   cfg.Model,
 		apiKey:  apiKey(cfg),
 		headers: cfg.Headers,
-		client:  &http.Client{Timeout: 300 * time.Second},
+		client:  &http.Client{Timeout: timeout},
+		limiter: newSimpleRateLimiter(cfg.RateLimit),
 	}
 }
 
@@ -56,6 +102,9 @@ func (p *openAICompatibleProvider) Embed(ctx context.Context, texts []string) ([
 	}
 	if p.baseURL == "" {
 		return nil, errors.New("embedding base_url is required")
+	}
+	if err := p.limiter.wait(ctx); err != nil {
+		return nil, fmt.Errorf("rate limit: %w", err)
 	}
 	body := map[string]any{"model": p.model, "input": texts}
 	data, _ := json.Marshal(body)
@@ -102,14 +151,20 @@ type geminiProvider struct {
 	model   string
 	apiKey  string
 	client  *http.Client
+	limiter *simpleRateLimiter
 }
 
 func newGeminiProvider(cfg EmbeddingConfig) *geminiProvider {
+	timeout, _ := time.ParseDuration(cfg.Timeout)
+	if timeout == 0 {
+		timeout = 60 * time.Second
+	}
 	return &geminiProvider{
 		baseURL: strings.TrimRight(cfg.BaseURL, "/"),
 		model:   cfg.Model,
 		apiKey:  apiKey(cfg),
-		client:  &http.Client{Timeout: 300 * time.Second},
+		client:  &http.Client{Timeout: timeout},
+		limiter: newSimpleRateLimiter(cfg.RateLimit),
 	}
 }
 
@@ -122,6 +177,9 @@ func (p *geminiProvider) Embed(ctx context.Context, texts []string) ([][]float32
 	}
 	vecs := make([][]float32, 0, len(texts))
 	for _, text := range texts {
+		if err := p.limiter.wait(ctx); err != nil {
+			return nil, fmt.Errorf("rate limit: %w", err)
+		}
 		body := map[string]any{
 			"content": map[string]any{
 				"parts": []map[string]string{{"text": text}},
@@ -166,13 +224,19 @@ type ollamaProvider struct {
 	baseURL string
 	model   string
 	client  *http.Client
+	limiter *simpleRateLimiter
 }
 
 func newOllamaProvider(cfg EmbeddingConfig) *ollamaProvider {
+	timeout, _ := time.ParseDuration(cfg.Timeout)
+	if timeout == 0 {
+		timeout = 60 * time.Second
+	}
 	return &ollamaProvider{
 		baseURL: strings.TrimRight(cfg.BaseURL, "/"),
 		model:   cfg.Model,
-		client:  &http.Client{Timeout: 300 * time.Second},
+		client:  &http.Client{Timeout: timeout},
+		limiter: newSimpleRateLimiter(cfg.RateLimit),
 	}
 }
 
@@ -185,6 +249,9 @@ func (p *ollamaProvider) Embed(ctx context.Context, texts []string) ([][]float32
 	}
 	vecs := make([][]float32, 0, len(texts))
 	for _, text := range texts {
+		if err := p.limiter.wait(ctx); err != nil {
+			return nil, fmt.Errorf("rate limit: %w", err)
+		}
 		body := map[string]any{"model": p.model, "prompt": text}
 		data, _ := json.Marshal(body)
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/api/embeddings", bytes.NewReader(data))

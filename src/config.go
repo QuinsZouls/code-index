@@ -77,6 +77,8 @@ type EmbeddingConfig struct {
 	APIKey    string            `json:"api_key,omitempty"`
 	APIKeyEnv string            `json:"api_key_env,omitempty"`
 	Headers   map[string]string `json:"headers,omitempty"`
+	RateLimit int               `json:"rate_limit,omitempty"`
+	Timeout   string            `json:"timeout,omitempty"`
 }
 
 func defaultConfig() Config {
@@ -194,6 +196,9 @@ func (e *EmbeddingConfig) normalize() {
 		case "lmstudio":
 			e.BaseURL = "http://localhost:1234/v1"
 		}
+	}
+	if e.Timeout == "" {
+		e.Timeout = "60s"
 	}
 }
 

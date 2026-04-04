@@ -134,3 +134,47 @@ func TestAPIKeyResolution(t *testing.T) {
 		t.Fatalf("apiKey() = %q, want explicit", got)
 	}
 }
+
+func TestEmbeddingConfigRateLimit(t *testing.T) {
+	cfg := EmbeddingConfig{RateLimit: 10}
+	cfg.normalize()
+	if cfg.RateLimit != 10 {
+		t.Fatalf("RateLimit = %d, want 10", cfg.RateLimit)
+	}
+}
+
+func TestEmbeddingConfigTimeoutDefault(t *testing.T) {
+	cfg := EmbeddingConfig{}
+	cfg.normalize()
+	if cfg.Timeout != "60s" {
+		t.Fatalf("Timeout = %q, want 60s", cfg.Timeout)
+	}
+}
+
+func TestEmbeddingConfigTimeoutCustom(t *testing.T) {
+	cfg := EmbeddingConfig{Timeout: "30s"}
+	cfg.normalize()
+	if cfg.Timeout != "30s" {
+		t.Fatalf("Timeout = %q, want 30s", cfg.Timeout)
+	}
+}
+
+func TestConfigWithRateLimitRoundTrip(t *testing.T) {
+	root := t.TempDir()
+	cfg := defaultConfig()
+	cfg.Embedding.RateLimit = 15
+	cfg.Embedding.Timeout = "45s"
+	if err := saveConfig(root, cfg); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := loadConfig(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Embedding.RateLimit != 15 {
+		t.Fatalf("RateLimit = %d, want 15", loaded.Embedding.RateLimit)
+	}
+	if loaded.Embedding.Timeout != "45s" {
+		t.Fatalf("Timeout = %q, want 45s", loaded.Embedding.Timeout)
+	}
+}

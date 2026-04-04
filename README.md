@@ -59,7 +59,9 @@ Example:
     "provider": "openrouter",
     "model": "qwen/qwen3-embedding-8b",
     "base_url": "https://openrouter.ai/api/v1",
-    "api_key_env": "OPENROUTER_API_KEY"
+    "api_key_env": "OPENROUTER_API_KEY",
+    "rate_limit": 10,
+    "timeout": "60s"
   }
 }
 ```
@@ -73,6 +75,20 @@ Supported providers:
 - `gemini`
 - `ollama`
 - `lmstudio`
+
+### Rate Limiting
+
+The `rate_limit` field controls request frequency to avoid API throttling:
+
+- `rate_limit`: requests per second (default: `0` = disabled)
+- Example: `10` means maximum 10 requests per second
+
+### Timeout
+
+The `timeout` field sets HTTP request timeout:
+
+- Format: duration string like `"30s"`, `"1m"`, `"2m30s"`
+- Default: `"60s"`
 
 ## Provider Notes
 
