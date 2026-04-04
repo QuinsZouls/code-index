@@ -27,6 +27,11 @@ Shared across all projects. Controls the embedding model and default configurati
 | `api_key` | Optional. API key value (use `api_key_env` instead for security). |
 | `api_key_env` | Environment variable name containing the API key (recommended). |
 | `headers` | Optional. Custom headers for API requests. |
+| `rate_limit` | Optional. Requests per second limit to avoid API throttling. `0` = disabled (default). |
+| `timeout` | Optional. HTTP request timeout. Format: `"30s"`, `"1m"`, `"2m30s"`. Default: `"60s"`. |
+| `max_retries` | Optional. Maximum retry attempts for transient errors. `0` = disabled (default). |
+| `retry_initial_delay` | Optional. Initial delay before first retry. Default: `"1s"`. |
+| `retry_max_delay` | Optional. Maximum delay cap for exponential backoff. Default: `"30s"`. |
 
 ### Provider Defaults
 
@@ -51,7 +56,9 @@ When `base_url` and `api_key_env` are omitted, these defaults apply:
   "embedding": {
     "provider": "openai",
     "model": "text-embedding-3-small",
-    "api_key_env": "OPENAI_API_KEY"
+    "api_key_env": "OPENAI_API_KEY",
+    "rate_limit": 10,
+    "timeout": "60s"
   }
 }
 ```
@@ -63,7 +70,8 @@ When `base_url` and `api_key_env` are omitted, these defaults apply:
   "embedding": {
     "provider": "openrouter",
     "model": "qwen/qwen3-embedding-8b",
-    "api_key_env": "OPENROUTER_API_KEY"
+    "api_key_env": "OPENROUTER_API_KEY",
+    "rate_limit": 5
   }
 }
 ```
@@ -99,7 +107,8 @@ When `base_url` and `api_key_env` are omitted, these defaults apply:
   "embedding": {
     "provider": "ollama",
     "model": "nomic-embed-text",
-    "base_url": "http://localhost:11434"
+    "base_url": "http://localhost:11434",
+    "timeout": "120s"
   }
 }
 ```
@@ -131,7 +140,13 @@ When `base_url` and `api_key_env` are omitted, these defaults apply:
 
 ### Important
 
-Switching embedding models changes vector dimensions — you must re-index after changing the model:
+**Rate Limiting:** Enable `rate_limit` to avoid hitting API provider limits. For example, OpenAI free tier allows ~3 requests/second, so set `"rate_limit": 3` or lower. Higher limits may work for paid tiers or local providers like Ollama.
+
+**Timeout:** Adjust `timeout` based on your network conditions and model response time. Local models (Ollama/LM Studio) may need longer timeouts (`"120s"` or more) for large batches.
+
+**Retry System:** Enable `max_retries` to handle transient errors automatically. Uses exponential backoff (delay doubles each retry). Recommended for production: `"max_retries": 3`. If all retries fail for a file, the indexer skips that file and continues with the next one.
+
+**Model Switching:** Changing embedding models changes vector dimensions — you must re-index after changing the model:
 
 ```bash
 rm -rf .codeindex/index.gob

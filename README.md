@@ -59,7 +59,9 @@ Example:
     "provider": "openrouter",
     "model": "qwen/qwen3-embedding-8b",
     "base_url": "https://openrouter.ai/api/v1",
-    "api_key_env": "OPENROUTER_API_KEY"
+    "api_key_env": "OPENROUTER_API_KEY",
+    "rate_limit": 10,
+    "timeout": "60s"
   }
 }
 ```
@@ -73,6 +75,46 @@ Supported providers:
 - `gemini`
 - `ollama`
 - `lmstudio`
+
+### Rate Limiting
+
+The `rate_limit` field controls request frequency to avoid API throttling:
+
+- `rate_limit`: requests per second (default: `0` = disabled)
+- Example: `10` means maximum 10 requests per second
+
+### Timeout
+
+The `timeout` field sets HTTP request timeout:
+
+- Format: duration string like `"30s"`, `"1m"`, `"2m30s"`
+- Default: `"60s"`
+
+### Retry System
+
+The retry system handles transient HTTP errors automatically:
+
+- `max_retries`: maximum retry attempts (default: `0` = disabled)
+- `retry_initial_delay`: first retry delay (default: `"1s"`)
+- `retry_max_delay`: maximum delay cap (default: `"30s"`)
+- Uses exponential backoff (delay doubles each retry)
+- If all retries fail for a file, indexer skips it and continues with next file
+
+Example with retry enabled:
+
+```json
+{
+  "embedding": {
+    "provider": "openai",
+    "model": "text-embedding-3-small",
+    "max_retries": 3,
+    "retry_initial_delay": "1s",
+    "retry_max_delay": "30s"
+  }
+}
+```
+
+Retryable errors include: rate limits (429), server errors (502, 503), timeouts, and connection issues.
 
 ## Provider Notes
 

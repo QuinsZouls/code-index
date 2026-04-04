@@ -71,12 +71,17 @@ type Config struct {
 }
 
 type EmbeddingConfig struct {
-	Provider  string            `json:"provider"`
-	Model     string            `json:"model"`
-	BaseURL   string            `json:"base_url,omitempty"`
-	APIKey    string            `json:"api_key,omitempty"`
-	APIKeyEnv string            `json:"api_key_env,omitempty"`
-	Headers   map[string]string `json:"headers,omitempty"`
+	Provider          string            `json:"provider"`
+	Model             string            `json:"model"`
+	BaseURL           string            `json:"base_url,omitempty"`
+	APIKey            string            `json:"api_key,omitempty"`
+	APIKeyEnv         string            `json:"api_key_env,omitempty"`
+	Headers           map[string]string `json:"headers,omitempty"`
+	RateLimit         int               `json:"rate_limit,omitempty"`
+	Timeout           string            `json:"timeout,omitempty"`
+	MaxRetries        int               `json:"max_retries,omitempty"`
+	RetryInitialDelay string            `json:"retry_initial_delay,omitempty"`
+	RetryMaxDelay     string            `json:"retry_max_delay,omitempty"`
 }
 
 func defaultConfig() Config {
@@ -194,6 +199,18 @@ func (e *EmbeddingConfig) normalize() {
 		case "lmstudio":
 			e.BaseURL = "http://localhost:1234/v1"
 		}
+	}
+	if e.Timeout == "" {
+		e.Timeout = "60s"
+	}
+	if e.MaxRetries < 0 {
+		e.MaxRetries = 0
+	}
+	if e.RetryInitialDelay == "" {
+		e.RetryInitialDelay = "1s"
+	}
+	if e.RetryMaxDelay == "" {
+		e.RetryMaxDelay = "30s"
 	}
 }
 
