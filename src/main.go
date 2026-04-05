@@ -147,6 +147,11 @@ func runSearch(args []string) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	indexFile := indexPath(root)
+	if _, err := os.Stat(indexFile); errors.Is(err, os.ErrNotExist) {
+		fmt.Fprintln(os.Stderr, "No index found. Run 'codeindex init' first to initialize the project.")
+		os.Exit(1)
+	}
 	cfg, err := loadConfig(root)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -215,6 +220,11 @@ func runStatus(args []string) {
 	root, err := filepath.Abs(*path)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	indexFile := indexPath(root)
+	if _, err := os.Stat(indexFile); errors.Is(err, os.ErrNotExist) {
+		fmt.Fprintln(os.Stderr, "No index found. Run 'codeindex init' first to initialize the project.")
 		os.Exit(1)
 	}
 	cfg, err := loadConfig(root)
