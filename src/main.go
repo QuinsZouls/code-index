@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -31,6 +33,10 @@ func main() {
 		runSearch(os.Args[2:])
 	case "status":
 		runStatus(os.Args[2:])
+	case "doctor":
+		runDoctor(os.Args[2:])
+	case "clear":
+		runClear(os.Args[2:])
 	default:
 		usage()
 		os.Exit(1)
@@ -38,7 +44,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "ccc commands: version, init, index, search, status")
+	fmt.Fprintln(os.Stderr, "codeindex commands: version, init, index, search, status, doctor, clear")
 }
 
 func findProjectRoot(start string) (string, error) {
@@ -336,4 +342,133 @@ func (p *progressPrinter) Done() {
 
 func (p *progressPrinter) Stop() {
 	p.Done()
+}
+
+func runDoctor(args []string) {
+	fs := flag.NewFlagSet("doctor", flag.ExitOnError)
+	path := fs.String("path", ".", "project root")
+	_ = fs.Parse(args)
+	root, err := filepath.Abs(*path)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	fmt.Println("codeindex doctor")
+	fmt.Println("===============")
+	fmt.Println()
+	hasErrors := false
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Printf("[FAIL] Home directory: %v\n", err)
+		hasErrors = true
+	} else {
+		fmt.Printf("[OK]   Home directory: %s\n", home)
+		globalPath := filepath.Join(home, settingsDirName, "default_settings.json")
+		if data, err := os.ReadFile(globalPath); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				fmt.Printf("[WARN] Global settings: not found at %s\n", globalPath)
+			} else {
+				fmt.Printf("[FAIL] Global settings: %v\n", err)
+				hasErrors = true
+			}
+		} else {
+			fmt.Printf("[OK]   Global settings: %s\n", globalPath)
+			var cfg Config
+			if err := json.Unmarshal(data, &cfg); err != nil {
+				fmt.Printf("[FAIL] Global settings parse: %v\n", err)
+				hasErrors = true
+			} else {
+				cfg.normalize()
+				fmt.Printf("       Provider: %s\n", cfg.Embedding.Provider)
+				fmt.Printf("       Model: %s\n", cfg.Embedding.Model)
+				fmt.Printf("       Base URL: %s\n", cfg.Embedding.BaseURL)
+				key := apiKey(cfg.Embedding)
+				if key == "" && cfg.Embedding.Provider != "ollama" && cfg.Embedding.Provider != "lmstudio" && cfg.Embedding.Provider != "llamacpp" {
+					fmt.Printf("[FAIL] API key: not set (env: %s)\n", cfg.Embedding.APIKeyEnv)
+					hasErrors = true
+				} else if key != "" {
+					fmt.Printf("[OK]   API key: set (env: %s, length: %d)\n", cfg.Embedding.APIKeyEnv, len(key))
+				} else {
+					fmt.Printf("[OK]   API key: not required for %s\n", cfg.Embedding.Provider)
+				}
+				provider, err := newEmbeddingProvider(cfg.Embedding)
+				if err != nil {
+					fmt.Printf("[FAIL] Provider init: %v\n", err)
+					hasErrors = true
+				} else {
+					fmt.Printf("[OK]   Provider init: %s\n", cfg.Embedding.Provider)
+					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer cancel()
+					vecs, err := provider.Embed(ctx, []string{"test"})
+					if err != nil {
+						fmt.Printf("[FAIL] Test embedding: %v\n", err)
+						hasErrors = true
+					} else if len(vecs) > 0 && len(vecs[0]) > 0 {
+						fmt.Printf("[OK]   Test embedding: dimension %d\n", len(vecs[0]))
+					} else {
+						fmt.Printf("[FAIL] Test embedding: empty response\n")
+						hasErrors = true
+					}
+				}
+			}
+		}
+	}
+	projectSettings := settingsPath(root)
+	if data, err := os.ReadFile(projectSettings); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			fmt.Printf("[WARN] Project settings: not found at %s\n", projectSettings)
+		} else {
+			fmt.Printf("[FAIL] Project settings: %v\n", err)
+			hasErrors = true
+		}
+	} else {
+		fmt.Printf("[OK]   Project settings: %s\n", projectSettings)
+		var cfg Config
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			fmt.Printf("[FAIL] Project settings parse: %v\n", err)
+			hasErrors = true
+		}
+	}
+	indexFile := indexPath(root)
+	if _, err := os.Stat(indexFile); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			fmt.Printf("[WARN] Index file: not found at %s\n", indexFile)
+		} else {
+			fmt.Printf("[FAIL] Index file: %v\n", err)
+			hasErrors = true
+		}
+	} else {
+		fmt.Printf("[OK]   Index file: %s\n", indexFile)
+	}
+	fmt.Println()
+	if hasErrors {
+		fmt.Println("[FAIL] Doctor found errors")
+		os.Exit(1)
+	}
+	fmt.Println("[OK]  Doctor passed")
+}
+
+func runClear(args []string) {
+	fs := flag.NewFlagSet("clear", flag.ExitOnError)
+	path := fs.String("path", ".", "project root")
+	_ = fs.Parse(args)
+	root, err := filepath.Abs(*path)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	indexFile := indexPath(root)
+	if _, err := os.Stat(indexFile); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			fmt.Println("no index to clear")
+			return
+		}
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if err := os.Remove(indexFile); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	fmt.Println("cleared:", indexFile)
 }

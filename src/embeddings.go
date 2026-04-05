@@ -22,7 +22,7 @@ type EmbeddingProvider interface {
 func newEmbeddingProvider(cfg EmbeddingConfig) (EmbeddingProvider, error) {
 	cfg.normalize()
 	switch cfg.Provider {
-	case "openai", "openai-compatible", "openrouter", "mistral", "lmstudio":
+	case "openai", "openai-compatible", "openrouter", "mistral", "lmstudio", "llamacpp":
 		return newOpenAICompatibleProvider(cfg), nil
 	case "gemini":
 		return newGeminiProvider(cfg), nil

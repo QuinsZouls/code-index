@@ -178,7 +178,7 @@ func (e *EmbeddingConfig) normalize() {
 			e.APIKeyEnv = "MISTRAL_API_KEY"
 		case "gemini":
 			e.APIKeyEnv = "GEMINI_API_KEY"
-		case "ollama", "lmstudio":
+		case "ollama", "lmstudio", "llamacpp":
 			e.APIKeyEnv = ""
 		default:
 			e.APIKeyEnv = "OPENAI_API_KEY"
@@ -198,6 +198,8 @@ func (e *EmbeddingConfig) normalize() {
 			e.BaseURL = "http://localhost:11434"
 		case "lmstudio":
 			e.BaseURL = "http://localhost:1234/v1"
+		case "llamacpp":
+			e.BaseURL = "http://localhost:8080/v1"
 		}
 	}
 	if e.Timeout == "" {

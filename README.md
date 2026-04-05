@@ -81,6 +81,7 @@ Supported providers:
 - `gemini`
 - `ollama`
 - `lmstudio`
+- `llamacpp`
 
 ### Rate Limiting
 
@@ -129,6 +130,28 @@ Retryable errors include: rate limits (429), server errors (502, 503), timeouts,
 - Default local endpoints:
   - Ollama: `http://localhost:11434`
   - LM Studio: `http://localhost:1234/v1`
+  - llama.cpp Server: `http://localhost:8080/v1`
+
+### llama.cpp Server
+
+To use llama.cpp server for embeddings, start the server with:
+
+```bash
+llama-server -m embedding-model.gguf --embedding --pooling cls
+```
+
+Example configuration:
+
+```json
+{
+  "embedding": {
+    "provider": "llamacpp",
+    "model": "nomic-embed-text"
+  }
+}
+```
+
+The llama.cpp server exposes an OpenAI-compatible `/v1/embeddings` endpoint. No API key is required by default.
 
 ## Commands
 
