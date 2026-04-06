@@ -37,6 +37,8 @@ func main() {
 		runDoctor(os.Args[2:])
 	case "clear":
 		runClear(os.Args[2:])
+	case "daemon":
+		runDaemon(os.Args[2:])
 	default:
 		usage()
 		os.Exit(1)
@@ -44,7 +46,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "codeindex commands: version, init, index, search, status, doctor, clear")
+	fmt.Fprintln(os.Stderr, "codeindex commands: version, init, index, search, status, doctor, clear, daemon")
 }
 
 func findProjectRoot(start string) (string, error) {
