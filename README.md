@@ -6,6 +6,7 @@ Semantic code search for codebases
 
 - API-first embeddings
 - Incremental indexing: only modified files are re-embedded.
+- Background daemon: automatic re-indexing on file changes.
 - Project state lives in `.codeindex/`.
 
 ## Layout
@@ -25,6 +26,9 @@ codeindex init -path .
 codeindex index -path .
 codeindex search -path . "authentication logic"
 codeindex status -path .
+codeindex daemon start -path . --interval 2s
+codeindex daemon list
+codeindex daemon stop
 ```
 
 ## Install skill
@@ -192,9 +196,96 @@ Runs vector search against the stored index.
 
 Prints file count, chunk count, and language distribution.
 
+### `daemon`
+
+Manages background daemon for automatic re-indexing.
+
+#### Subcommands
+
+| Command | Description |
+|---------|-------------|
+| `daemon start` | Start daemon for a project |
+| `daemon stop` | Stop daemon (by PID or project) |
+| `daemon list` | List all running daemons |
+| `daemon status` | Show daemon status for current project |
+
+#### `daemon start`
+
+Starts a background daemon that monitors file changes and re-indexes automatically.
+
+```bash
+codeindex daemon start [--path .] [--interval 2s] [--debounce 500ms] [--verbose]
+```
+
+Options:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--path` | `.` | Project root directory |
+| `--interval` | `2s` | Polling interval for file scanning |
+| `--debounce` | `500ms` | Wait time before processing batch |
+| `--verbose` | `false` | Show re-indexing activity |
+
+The daemon:
+- Polls for file changes (no external dependencies)
+- Debounces rapid changes to process in batches
+- Re-indexes only modified files (partial updates)
+- Removes deleted files from the index
+- Stores PID registry in `~/.codeindex/daemons.json`
+
+#### `daemon stop`
+
+Stops a running daemon.
+
+```bash
+codeindex daemon stop [--path .] [pid]
+```
+
+If no PID is provided, stops the daemon for the current project.
+
+#### `daemon list`
+
+Lists all running daemons across projects.
+
+```bash
+codeindex daemon list
+```
+
+Output example:
+
+```text
+PID      PROJECT                                  STATUS     STARTED
+12345    /home/user/projects/myapp                running    2026-04-05 10:30:00
+```
+
+#### `daemon status`
+
+Shows detailed status for the current project's daemon.
+
+```bash
+codeindex daemon status [--path .]
+```
+
+Output example:
+
+```text
+PID:      12345
+Project:  /home/user/projects/myapp
+Status:   running
+Started:  2026-04-05 10:30:00
+Interval: 2s
+Debounce: 500ms
+Files:    150
+Chunks:   500
+```
+
 ## Storage
 
 Embeddings are stored inside `.codeindex/index.gob` alongside chunk metadata.
+
+Daemon registry is stored in `~/.codeindex/daemons.json` with PID and project information.
+
+Lock files are stored in `/tmp/codeindex-<hash>.lock` to prevent duplicate daemons per project.
 
 ## Performance
 
