@@ -216,3 +216,73 @@ func TestConfigWithRetryRoundTrip(t *testing.T) {
 		t.Fatalf("RetryMaxDelay = %q, want 20s", loaded.Embedding.RetryMaxDelay)
 	}
 }
+
+func TestSaveUserDefaultConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cfg := defaultConfig()
+	cfg.Embedding.Provider = "ollama"
+	cfg.Embedding.Model = "nomic-embed-text"
+	if err := saveUserDefaultConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(home, settingsDirName, "default_settings.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var loaded Config
+	if err := json.Unmarshal(data, &loaded); err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Embedding.Provider != "ollama" {
+		t.Fatalf("Provider = %q, want ollama", loaded.Embedding.Provider)
+	}
+	if loaded.Embedding.Model != "nomic-embed-text" {
+		t.Fatalf("Model = %q, want nomic-embed-text", loaded.Embedding.Model)
+	}
+}
+
+func TestSaveUserDefaultConfigUpdatesExisting(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, settingsDirName), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	existing := defaultConfig()
+	existing.Embedding.Provider = "openai"
+	existing.Embedding.Model = "text-embedding-3-large"
+	data, _ := json.MarshalIndent(existing, "", "  ")
+	if err := os.WriteFile(filepath.Join(home, settingsDirName, "default_settings.json"), append(data, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := defaultConfig()
+	cfg.Embedding.Provider = "mistral"
+	cfg.Embedding.Model = "mistral-embed"
+	if err := saveUserDefaultConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := loadUserDefaultConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Embedding.Provider != "mistral" {
+		t.Fatalf("Provider = %q, want mistral", loaded.Embedding.Provider)
+	}
+	if loaded.Embedding.Model != "mistral-embed" {
+		t.Fatalf("Model = %q, want mistral-embed", loaded.Embedding.Model)
+	}
+}
+
+func TestUserDefaultConfigPath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	path, err := userDefaultConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := filepath.Join(home, settingsDirName, "default_settings.json")
+	if path != expected {
+		t.Fatalf("path = %q, want %q", path, expected)
+	}
+}
