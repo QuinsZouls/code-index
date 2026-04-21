@@ -12,7 +12,7 @@ description: "This skill should be used when code search is needed (whether expl
 The agent owns the `codeindex` lifecycle for the current project — initialization, indexing, and searching. Do not ask the user to perform these steps; handle them automatically.
 
 - **Initialization**: If `codeindex search` or `codeindex index` fails with an initialization error (e.g., "Not in an initialized project directory"), run `codeindex init` from the project root directory, then `codeindex index` to build the index, then retry the original command.
-- **Index freshness**: Keep the index up to date by running `codeindex index -path .` when the index may be stale — e.g., at the start of a session, or after making significant code changes (new files, refactors, renamed modules). There is no need to re-index between consecutive searches if no code was changed in between.
+- **Index freshness**: Keep the index up to date by running `codeindex index` when the index may be stale — e.g., at the start of a session, or after making significant code changes (new files, refactors, renamed modules). There is no need to re-index between consecutive searches if no code was changed in between.
 - **Installation**: If `codeindex` itself is not found (command not found), refer to [management.md](references/management.md) for installation instructions and inform the user.
 
 ## Searching the Codebase
@@ -20,7 +20,12 @@ The agent owns the `codeindex` lifecycle for the current project — initializat
 To perform a semantic search:
 
 ```bash
-codeindex search -path . <query terms>
+codeindex search <query terms>
+```
+To perform a sematic search filter by path:
+
+```bash
+codeindex search -path . "authentication logic"
 ```
 
 **Note**: Flags must precede the query string.
@@ -28,41 +33,42 @@ codeindex search -path . <query terms>
 The query should describe the concept, functionality, or behavior to find, not exact code syntax. For example:
 
 ```bash
-codeindex search -path . database connection pooling
-codeindex search -path . user authentication flow
-codeindex search -path . error handling retry logic
+codeindex search database connection pooling
+codeindex search user authentication flow
+codeindex search error handling retry logic
 ```
+
 
 ### Filtering Results
 
 - **By language** (`-lang`): restrict results to specific languages (comma-separated).
 
   ```bash
-  codeindex search -path . -lang python,markdown database schema
+  codeindex search -lang python,markdown database schema
   ```
 
 - **By path** (`-glob`): restrict results to files matching glob patterns (comma-separated).
 
   ```bash
-  codeindex search -path . -glob 'src/api/**' request validation
+  codeindex search -glob 'src/api/**' request validation
   ```
 
 - **Limit results** (`-limit`): maximum number of results (default: from config `search_limit`).
 
   ```bash
-  codeindex search -path . -limit 10 database schema
+  codeindex search -limit 10 database schema
   ```
 
 - **Files only** (`-files`): show only file paths and metadata without content.
 
   ```bash
-  codeindex search -path . -files database schema
+  codeindex search -files database schema
   ```
 
 - **Hybrid search** (`-hybrid`): combine vector embeddings with keyword matching (TF-IDF) for better precision with technical terms.
 
   ```bash
-  codeindex search -path . -hybrid "EmbeddingProvider interface"
+  codeindex search -hybrid "EmbeddingProvider interface"
   ```
 
 - **Score threshold**: Results below `score_threshold` (from config) are automatically filtered out.
@@ -91,7 +97,7 @@ Or use per-query with `-hybrid` flag.
 Results default to the first page (limit: 5). To retrieve additional results:
 
 ```bash
-codeindex search -path . -offset 5 -limit 5 database schema
+codeindex search -offset 5 -limit 5 database schema
 ```
 
 If all returned results look relevant, use `-offset` to fetch the next page — there are likely more useful matches beyond the first page.
