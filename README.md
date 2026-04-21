@@ -22,11 +22,15 @@ codeindex           Built binary
 ```bash
 curl -fsSL https://raw.githubusercontent.com/QuinsZouls/code-index/master/install.sh | bash
 codeindex version
-codeindex init -path .
-codeindex index -path .
+# Setup
+codeindex onboard
+codeindex init
+codeindex index
+codeindex search "authentication logic"
+# Search with path
 codeindex search -path . "authentication logic"
-codeindex status -path .
-codeindex daemon start -path . --interval 2s
+codeindex status
+codeindex daemon start --interval 2s
 codeindex daemon list
 codeindex daemon stop
 ```
@@ -173,16 +177,18 @@ This ensures chunks fit within the model's context window while respecting line 
 To use llama.cpp server for embeddings, start the server with:
 
 ```bash
-llama-server -m embedding-model.gguf --embedding --pooling cls
+llama-server -c 8192 -hf nomic-ai/nomic-embed-text-v1.5-GGUF -c 8192 -ub 8192 --embeddings
 ```
+Based on our tests we recommend the model nomic-ai/nomic-embed-text-v1.5-GGUF
 
 Example configuration:
 
 ```json
 {
   "embedding": {
-    "provider": "llamacpp",
-    "model": "nomic-embed-text"
+    "provider": "openai-compatible",
+    "model": "nomic-ai/nomic-embed-text-v2-moe-GGUF",
+    "base_url": "http://127.0.0.1:8080/v1",
   }
 }
 ```

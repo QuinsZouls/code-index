@@ -39,6 +39,8 @@ func main() {
 		runClear(os.Args[2:])
 	case "daemon":
 		runDaemon(os.Args[2:])
+	case "onboard":
+		runOnboard(os.Args[2:])
 	default:
 		usage()
 		os.Exit(1)
@@ -46,7 +48,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "codeindex commands: version, init, index, search, status, doctor, clear, daemon")
+	fmt.Fprintln(os.Stderr, "codeindex commands: version, init, index, search, status, doctor, clear, daemon, onboard")
 }
 
 func findProjectRoot(start string) (string, error) {
@@ -483,4 +485,180 @@ func runClear(args []string) {
 		os.Exit(1)
 	}
 	fmt.Println("cleared:", indexFile)
+}
+
+var providerDefaults = map[string]struct {
+	model    string
+	baseURL  string
+	keyEnv   string
+	needsKey bool
+}{
+	"openai":           {"text-embedding-3-small", "https://api.openai.com/v1", "OPENAI_API_KEY", true},
+	"ollama":           {"nomic-embed-text", "http://localhost:11434", "", false},
+	"openrouter":       {"openai/text-embedding-3-small", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY", true},
+	"mistral":          {"mistral-embed", "https://api.mistral.ai/v1", "MISTRAL_API_KEY", true},
+	"gemini":           {"text-embedding-004", "https://generativelanguage.googleapis.com/v1beta", "GEMINI_API_KEY", true},
+	"lmstudio":         {"text-embedding-nomic-embed-text-v1.5", "http://localhost:1234/v1", "", false},
+	"llamacpp":         {"local-model", "http://localhost:8080/v1", "", false},
+	"openai-compatible": {"", "", "OPENAI_API_KEY", true},
+}
+
+func runOnboard(args []string) {
+	fs := flag.NewFlagSet("onboard", flag.ExitOnError)
+	providerFlag := fs.String("provider", "", "embedding provider (openai, ollama, openrouter, mistral, gemini, lmstudio, llamacpp, openai-compatible)")
+	modelFlag := fs.String("model", "", "embedding model name")
+	baseURLFlag := fs.String("base-url", "", "base URL for the embedding API")
+	apiKeyEnvFlag := fs.String("api-key-env", "", "environment variable name for API key")
+	_ = fs.Parse(args)
+
+	cfg, _ := loadUserDefaultConfig()
+	if *providerFlag != "" || *modelFlag != "" || *baseURLFlag != "" || *apiKeyEnvFlag != "" {
+		if *providerFlag != "" {
+			cfg.Embedding.Provider = *providerFlag
+			def, ok := providerDefaults[*providerFlag]
+			if ok && !def.needsKey {
+				cfg.Embedding.APIKeyEnv = ""
+			}
+			if *baseURLFlag == "" && ok {
+				cfg.Embedding.BaseURL = ""
+			}
+		}
+		if *modelFlag != "" {
+			cfg.Embedding.Model = *modelFlag
+		}
+		if *baseURLFlag != "" {
+			cfg.Embedding.BaseURL = *baseURLFlag
+		}
+		if *apiKeyEnvFlag != "" {
+			cfg.Embedding.APIKeyEnv = *apiKeyEnvFlag
+		}
+		cfg.normalize()
+		if err := saveUserDefaultConfig(cfg); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		path, _ := userDefaultConfigPath()
+		fmt.Printf("saved to %s\n", path)
+		fmt.Printf("provider: %s\n", cfg.Embedding.Provider)
+		fmt.Printf("model: %s\n", cfg.Embedding.Model)
+		if cfg.Embedding.BaseURL != "" {
+			fmt.Printf("base_url: %s\n", cfg.Embedding.BaseURL)
+		}
+		if cfg.Embedding.APIKeyEnv != "" {
+			fmt.Printf("api_key_env: %s\n", cfg.Embedding.APIKeyEnv)
+		}
+		return
+	}
+
+	fmt.Println("codeindex onboard")
+	fmt.Println("===============")
+	fmt.Println()
+	fmt.Println("Select an embedding provider:")
+	providers := []string{"openai", "ollama", "openrouter", "mistral", "gemini", "lmstudio", "llamacpp", "openai-compatible"}
+	for i, p := range providers {
+		def := providerDefaults[p]
+		fmt.Printf("  %d. %s", i+1, p)
+		if def.model != "" {
+			fmt.Printf(" (default: %s)", def.model)
+		}
+		fmt.Println()
+	}
+	fmt.Println()
+
+	provider := readInput("Provider number or name", "1")
+	if idx := atoi(provider); idx >= 1 && idx <= len(providers) {
+		provider = providers[idx-1]
+	}
+	provider = strings.ToLower(strings.TrimSpace(provider))
+
+	def, ok := providerDefaults[provider]
+	if !ok {
+		def = providerDefaults["openai"]
+	}
+
+	model := readInput("Model name", def.model)
+	model = strings.TrimSpace(model)
+	if model == "" {
+		model = def.model
+	}
+
+	var apiKeyEnv, baseURL string
+	if def.needsKey {
+		apiKeyEnv = readInput("API key environment variable name", def.keyEnv)
+		apiKeyEnv = strings.TrimSpace(apiKeyEnv)
+		if apiKeyEnv == "" {
+			apiKeyEnv = def.keyEnv
+		}
+	}
+
+	baseURL = readInput("Base URL (leave empty for default)", def.baseURL)
+	baseURL = strings.TrimSpace(baseURL)
+	if baseURL == "" {
+		baseURL = def.baseURL
+	}
+
+	cfg.Embedding.Provider = provider
+	cfg.Embedding.Model = model
+	cfg.Embedding.BaseURL = baseURL
+	if def.needsKey {
+		cfg.Embedding.APIKeyEnv = apiKeyEnv
+	} else {
+		cfg.Embedding.APIKeyEnv = ""
+	}
+	cfg.normalize()
+
+	fmt.Println()
+	fmt.Println("Configuration:")
+	fmt.Printf("  Provider: %s\n", cfg.Embedding.Provider)
+	fmt.Printf("  Model: %s\n", cfg.Embedding.Model)
+	if cfg.Embedding.BaseURL != "" {
+		fmt.Printf("  Base URL: %s\n", cfg.Embedding.BaseURL)
+	}
+	if cfg.Embedding.APIKeyEnv != "" {
+		fmt.Printf("  API Key Env: %s\n", cfg.Embedding.APIKeyEnv)
+	}
+	fmt.Println()
+
+	confirm := readInput("Save this configuration? (y/n)", "y")
+	if strings.ToLower(strings.TrimSpace(confirm)) != "y" {
+		fmt.Println("cancelled")
+		return
+	}
+
+	if err := saveUserDefaultConfig(cfg); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	path, _ := userDefaultConfigPath()
+	fmt.Printf("saved to %s\n", path)
+	fmt.Println()
+	fmt.Println("You can now run 'codeindex init' in your projects to use these defaults.")
+}
+
+func readInput(prompt, defaultValue string) string {
+	if defaultValue != "" {
+		fmt.Printf("%s [%s]: ", prompt, defaultValue)
+	} else {
+		fmt.Printf("%s: ", prompt)
+	}
+	var input string
+	fmt.Scanln(&input)
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return defaultValue
+	}
+	return input
+}
+
+func atoi(s string) int {
+	var n int
+	for _, c := range s {
+		if c >= '0' && c <= '9' {
+			n = n*10 + int(c-'0')
+		} else {
+			return 0
+		}
+	}
+	return n
 }

@@ -286,6 +286,33 @@ func loadUserDefaultConfig() (Config, error) {
 	return cfg, nil
 }
 
+func saveUserDefaultConfig(cfg Config) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(home, settingsDirName)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	path := filepath.Join(dir, "default_settings.json")
+	cfg.normalize()
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	return os.WriteFile(path, data, 0o644)
+}
+
+func userDefaultConfigPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, settingsDirName, "default_settings.json"), nil
+}
+
 func settingsDir(projectRoot string) string {
 	return filepath.Join(projectRoot, settingsDirName)
 }
