@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.6
+
+### Fixed
+
+- Release workflow now uses dynamic version from git tag instead of hardcoded value.
+
 ## 0.1.5
 
 ### Added
