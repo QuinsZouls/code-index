@@ -227,7 +227,7 @@ func (i *Indexer) Index(ctx context.Context) error {
 }
 
 func (i *Indexer) fileChunks(relPath, content string) []Chunk {
-	return chunkText(content, i.cfg.ChunkSize, i.cfg.ChunkOverlap)
+	return chunkText(content, i.cfg.ChunkSize, i.cfg.ChunkOverlap, i.cfg.ContextSize)
 }
 
 func (i *Indexer) languageFor(relPath string) string {

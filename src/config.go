@@ -60,6 +60,7 @@ type Config struct {
 	ChunkSize         int               `json:"chunk_size"`
 	ChunkOverlap      int               `json:"chunk_overlap"`
 	MinChunkSize      int               `json:"min_chunk_size"`
+	ContextSize       int               `json:"context_size"`
 	WorkerCount       int               `json:"worker_count,omitempty"`
 	CheckpointEvery   int               `json:"checkpoint_every,omitempty"`
 	SearchLimit       int               `json:"search_limit,omitempty"`
@@ -93,6 +94,7 @@ func defaultConfig() Config {
 		ChunkSize:         120,
 		ChunkOverlap:      20,
 		MinChunkSize:      8,
+		ContextSize:       0,
 		WorkerCount:       0,
 		CheckpointEvery:   0,
 		SearchLimit:       5,
@@ -129,6 +131,9 @@ func (c *Config) normalize() {
 	}
 	if c.MinChunkSize <= 0 {
 		c.MinChunkSize = 8
+	}
+	if c.ContextSize < 0 {
+		c.ContextSize = 0
 	}
 	if c.WorkerCount < 0 {
 		c.WorkerCount = 0
