@@ -127,6 +127,38 @@ Example with retry enabled:
 
 Retryable errors include: rate limits (429), server errors (502, 503), timeouts, and connection issues.
 
+### Chunking Options
+
+The indexer splits files into chunks for embedding. By default, it uses `chunk_size` (lines) to determine chunk boundaries:
+
+- `chunk_size`: maximum lines per chunk (default: `120`)
+- `chunk_overlap`: lines to overlap between chunks (default: `20`)
+- `min_chunk_size`: minimum lines for a valid chunk (default: `8`)
+
+#### Context Size Limit
+
+Some embedding models have small context windows (e.g., 512 tokens). Use `context_size` to limit chunks by character count instead of lines:
+
+- `context_size`: maximum characters per chunk (default: `0` = disabled)
+
+When `context_size` is set and a chunk would exceed this limit, the indexer switches to character-based chunking:
+
+- Chunks are split at line boundaries (no mid-line splits)
+- Overlap is respected
+- A single long line exceeding `context_size` remains as one chunk
+
+Example for a 512-token model:
+
+```json
+{
+  "chunk_size": 120,
+  "chunk_overlap": 20,
+  "context_size": 2048
+}
+```
+
+This ensures chunks fit within the model's context window while respecting line boundaries for readability.
+
 ## Provider Notes
 
 - `api_key_env` should contain the environment variable name, not the secret itself.
