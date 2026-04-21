@@ -131,10 +131,7 @@ func runDaemonStart(args []string) {
 	cmd.Env = append(os.Environ(), "CODEINDEX_DAEMON_FORK=1")
 	cmd.Stdout = nil
 	cmd.Stderr = nil
-	cmd.SysProcAttr = &syscall.SysProcAttr{}
-	if runtime.GOOS != "windows" {
-		cmd.SysProcAttr.Setsid = true
-	}
+	configureDaemonCmd(cmd)
 
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start daemon: %v\n", err)
