@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.5
+
+### Added
+
+- `onboard` command for interactive global configuration setup.
+- Saves default embedding settings to `~/.codeindex/default_settings.json`.
+- Supports providers: openai, ollama, openrouter, mistral, gemini, lmstudio, llamacpp, openai-compatible.
+- CLI flags mode: `--provider`, `--model`, `--base-url`, `--api-key-env`.
+
 ## 0.1.4
 
 ### Changed
