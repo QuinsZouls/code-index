@@ -484,13 +484,13 @@ var providerDefaults = map[string]struct {
 	keyEnv   string
 	needsKey bool
 }{
-	"openai":           {"text-embedding-3-small", "https://api.openai.com/v1", "OPENAI_API_KEY", true},
-	"ollama":           {"nomic-embed-text", "http://localhost:11434", "", false},
-	"openrouter":       {"openai/text-embedding-3-small", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY", true},
-	"mistral":          {"mistral-embed", "https://api.mistral.ai/v1", "MISTRAL_API_KEY", true},
-	"gemini":           {"text-embedding-004", "https://generativelanguage.googleapis.com/v1beta", "GEMINI_API_KEY", true},
-	"lmstudio":         {"text-embedding-nomic-embed-text-v1.5", "http://localhost:1234/v1", "", false},
-	"llamacpp":         {"local-model", "http://localhost:8080/v1", "", false},
+	"openai":            {"text-embedding-3-small", "https://api.openai.com/v1", "OPENAI_API_KEY", true},
+	"ollama":            {"nomic-embed-text", "http://localhost:11434", "", false},
+	"openrouter":        {"openai/text-embedding-3-small", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY", true},
+	"mistral":           {"mistral-embed", "https://api.mistral.ai/v1", "MISTRAL_API_KEY", true},
+	"gemini":            {"text-embedding-004", "https://generativelanguage.googleapis.com/v1beta", "GEMINI_API_KEY", true},
+	"lmstudio":          {"text-embedding-nomic-embed-text-v1.5", "http://localhost:1234/v1", "", false},
+	"llamacpp":          {"local-model", "http://localhost:8080/v1", "", false},
 	"openai-compatible": {"", "", "OPENAI_API_KEY", true},
 }
 

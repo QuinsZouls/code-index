@@ -3,12 +3,13 @@ package utils
 import (
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 )
 
 // ReadChunkContent reads file content by line range
 func ReadChunkContent(projectRoot, relPath string, startLine, endLine int) string {
-	absPath := projectRoot + "/" + relPath
+	absPath := filepath.Join(projectRoot, relPath)
 	data, err := os.ReadFile(absPath)
 	if err != nil {
 		return "[file unavailable: " + err.Error() + "]"

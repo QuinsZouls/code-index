@@ -96,14 +96,6 @@ func runDaemonStart(args []string) {
 		return
 	}
 
-cfg, err := config.LoadConfig(root)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	_ = cfg
-	_ = index.NewIndexer
-
 	lockPath := lockFilePath(root)
 	data, err := os.ReadFile(lockPath)
 	if err == nil {
@@ -521,8 +513,7 @@ func (d *Daemon) processBatch() {
 			}
 		}
 	}
-
-if len(modified) > 0 || len(deleted) > 0 {
+	if len(modified) > 0 || len(deleted) > 0 {
 		if err := index.SaveIndex(config.IndexPath(d.projectRoot), d.indexer.IndexData()); err != nil {
 			if d.verbose {
 				fmt.Printf("[!] failed to save index: %v\n", err)

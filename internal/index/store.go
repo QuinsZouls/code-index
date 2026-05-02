@@ -10,8 +10,8 @@ import (
 )
 
 type IndexData struct {
-	Version            int                      `json:"version"`
-	EmbeddingSignature string                   `json:"embedding_signature"`
+	Version            int                            `json:"version"`
+	EmbeddingSignature string                         `json:"embedding_signature"`
 	Files              map[string]types.FileState     `json:"files"`
 	ChunksByFile       map[string][]types.ChunkRecord `json:"chunks_by_file"`
 }

@@ -308,7 +308,7 @@ func (i *Indexer) Search(ctx context.Context, opts SearchOptions) ([]types.Searc
 			}
 			vectorScore := cosine(queryVec, ch.Embedding)
 
-		var finalScore float64
+			var finalScore float64
 			if useHybrid && hybridScorer != nil {
 				finalScore = hybridScorer.CombineScores(vectorScore, ch.FilePath, ch.StartLine, ch.EndLine, queryTerms)
 			} else {
