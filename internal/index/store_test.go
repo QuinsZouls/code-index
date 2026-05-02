@@ -1,9 +1,11 @@
-package main
+package index
 
 import (
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/QuinsZouls/code-index/internal/types"
 )
 
 func TestIndexStoreRoundTrip(t *testing.T) {
@@ -11,10 +13,10 @@ func TestIndexStoreRoundTrip(t *testing.T) {
 	original := &IndexData{
 		Version:            1,
 		EmbeddingSignature: "sig",
-		Files: map[string]FileState{
+		Files: map[string]types.FileState{
 			"a.go": {Hash: "hash", ChunkCount: 1},
 		},
-		ChunksByFile: map[string][]ChunkRecord{
+		ChunksByFile: map[string][]types.ChunkRecord{
 			"a.go": {
 				{
 					FilePath:  "a.go",

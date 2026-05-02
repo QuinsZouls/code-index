@@ -1,4 +1,4 @@
-package main
+package index
 
 import (
 	"context"
@@ -11,6 +11,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/QuinsZouls/code-index/internal/config"
+	"github.com/QuinsZouls/code-index/internal/embeddings"
+	"github.com/QuinsZouls/code-index/internal/search"
+	"github.com/QuinsZouls/code-index/internal/types"
+	"github.com/QuinsZouls/code-index/internal/utils"
 )
 
 type SearchOptions struct {
@@ -24,34 +30,34 @@ type SearchOptions struct {
 
 type Indexer struct {
 	projectRoot string
-	cfg         Config
-	provider    EmbeddingProvider
+	cfg         config.Config
+	Provider    embeddings.EmbeddingProvider
 	index       *IndexData
-	progressFn  func(IndexProgress)
+	ProgressFn  func(types.IndexProgress)
 }
 
-func newIndexer(projectRoot string, cfg Config) (*Indexer, error) {
-	provider, err := newEmbeddingProvider(cfg.Embedding)
+func NewIndexer(projectRoot string, cfg config.Config) (*Indexer, error) {
+	provider, err := embeddings.NewEmbeddingProvider(cfg.Embedding)
 	if err != nil {
 		return nil, err
 	}
-	idx, err := loadIndex(indexPath(projectRoot))
+	idx, err := loadIndex(config.IndexPath(projectRoot))
 	if err != nil {
 		return nil, err
 	}
-	sig := cfg.embeddingSignature()
+	sig := cfg.EmbeddingSignature()
 	if idx == nil || idx.EmbeddingSignature != sig {
 		idx = newIndexData(sig)
 	}
-	return &Indexer{projectRoot: projectRoot, cfg: cfg, provider: provider, index: idx}, nil
+	return &Indexer{projectRoot: projectRoot, cfg: cfg, Provider: provider, index: idx}, nil
 }
 
 func (i *Indexer) Index(ctx context.Context) error {
-	files, err := walkFiles(i.projectRoot, i.cfg)
+	files, err := WalkFiles(i.projectRoot, i.cfg)
 	if err != nil {
 		return err
 	}
-	currentSig := i.cfg.embeddingSignature()
+	currentSig := i.cfg.EmbeddingSignature()
 	checkpointEvery := i.cfg.CheckpointEvery
 	if checkpointEvery <= 0 {
 		checkpointEvery = len(files) / 50
@@ -62,7 +68,7 @@ func (i *Indexer) Index(ctx context.Context) error {
 			checkpointEvery = 100
 		}
 	}
-	prevFiles := make(map[string]FileState, len(i.index.Files))
+	prevFiles := make(map[string]types.FileState, len(i.index.Files))
 	for path, state := range i.index.Files {
 		prevFiles[path] = state
 	}
@@ -77,7 +83,7 @@ func (i *Indexer) Index(ctx context.Context) error {
 		size    int64
 		modNano int64
 		kind    string
-		records []ChunkRecord
+		records []types.ChunkRecord
 		skipped bool
 		err     error
 	}
@@ -106,7 +112,7 @@ func (i *Indexer) Index(ctx context.Context) error {
 		if !force && pendingWrites < checkpointEvery && time.Since(lastFlush) < 3*time.Second {
 			return nil
 		}
-		if err := saveIndex(indexPath(i.projectRoot), i.index); err != nil {
+		if err := saveIndex(config.IndexPath(i.projectRoot), i.index); err != nil {
 			return err
 		}
 		pendingWrites = 0
@@ -140,27 +146,27 @@ func (i *Indexer) Index(ctx context.Context) error {
 				results <- fileResult{rel: job.rel, err: err}
 				continue
 			}
-			hash := fileHash(data)
-			chunks := i.fileChunks(job.rel, string(data))
+			hash := FileHash(data)
+			chunks := i.FileChunks(job.rel, string(data))
 			texts := make([]string, 0, len(chunks))
 			for _, ch := range chunks {
 				texts = append(texts, ch.Content)
 			}
-			vecs, err := i.provider.Embed(ctx, texts)
+			vecs, err := i.Provider.Embed(ctx, texts)
 			if err != nil {
 				results <- fileResult{rel: job.rel, err: fmt.Errorf("embed %s: %w", job.rel, err)}
 				continue
 			}
-			records := make([]ChunkRecord, 0, len(chunks))
-			lang := i.languageFor(job.rel)
+			records := make([]types.ChunkRecord, 0, len(chunks))
+			lang := i.LanguageFor(job.rel)
 			for idx, ch := range chunks {
-				records = append(records, ChunkRecord{
+				records = append(records, types.ChunkRecord{
 					FilePath:  job.rel,
 					Language:  lang,
 					StartLine: ch.StartLine,
 					EndLine:   ch.EndLine,
 					Embedding: vecs[idx],
-					ChunkHash: fileHash([]byte(ch.Content)),
+					ChunkHash: FileHash([]byte(ch.Content)),
 				})
 			}
 			kind := "modified"
@@ -176,8 +182,8 @@ func (i *Indexer) Index(ctx context.Context) error {
 	}
 	go func() {
 		for idx, rel := range files {
-			if i.progressFn != nil {
-				i.progressFn(IndexProgress{Current: idx + 1, Total: len(files), File: rel, Action: "queued"})
+			if i.ProgressFn != nil {
+				i.ProgressFn(types.IndexProgress{Current: idx + 1, Total: len(files), File: rel, Action: "queued"})
 			}
 			jobs <- fileJob{rel: rel, idx: idx}
 		}
@@ -195,12 +201,12 @@ func (i *Indexer) Index(ctx context.Context) error {
 		}
 		seen[result.rel] = struct{}{}
 		if result.skipped {
-			if i.progressFn != nil {
-				i.progressFn(IndexProgress{File: result.rel, Action: "skipped", Kind: result.kind})
+			if i.ProgressFn != nil {
+				i.ProgressFn(types.IndexProgress{File: result.rel, Action: "skipped", Kind: result.kind})
 			}
 			continue
 		}
-		i.index.Files[result.rel] = FileState{Hash: result.hash, ChunkCount: len(result.records), Size: result.size, ModTimeUnixNano: result.modNano}
+		i.index.Files[result.rel] = types.FileState{Hash: result.hash, ChunkCount: len(result.records), Size: result.size, ModTimeUnixNano: result.modNano}
 		i.index.ChunksByFile[result.rel] = result.records
 		pendingWrites++
 		if err := flushIndex(false); err != nil {
@@ -209,8 +215,8 @@ func (i *Indexer) Index(ctx context.Context) error {
 			}
 			continue
 		}
-		if i.progressFn != nil {
-			i.progressFn(IndexProgress{File: result.rel, Action: "indexed", Kind: result.kind, Chunks: len(result.records)})
+		if i.ProgressFn != nil {
+			i.ProgressFn(types.IndexProgress{File: result.rel, Action: "indexed", Kind: result.kind, Chunks: len(result.records)})
 		}
 	}
 	for file := range i.index.Files {
@@ -219,18 +225,18 @@ func (i *Indexer) Index(ctx context.Context) error {
 			delete(i.index.ChunksByFile, file)
 		}
 	}
-	i.index.EmbeddingSignature = i.cfg.embeddingSignature()
+	i.index.EmbeddingSignature = i.cfg.EmbeddingSignature()
 	if err := flushIndex(true); err != nil && firstErr == nil {
 		firstErr = err
 	}
 	return firstErr
 }
 
-func (i *Indexer) fileChunks(relPath, content string) []Chunk {
+func (i *Indexer) FileChunks(relPath, content string) []types.Chunk {
 	return chunkText(content, i.cfg.ChunkSize, i.cfg.ChunkOverlap, i.cfg.ContextSize)
 }
 
-func (i *Indexer) languageFor(relPath string) string {
+func (i *Indexer) LanguageFor(relPath string) string {
 	ext := strings.ToLower(filepath.Ext(relPath))
 	if lang, ok := i.cfg.LanguageOverrides[strings.TrimPrefix(ext, ".")]; ok {
 		return lang
@@ -261,7 +267,7 @@ func (i *Indexer) languageFor(relPath string) string {
 	}
 }
 
-func (i *Indexer) Search(ctx context.Context, opts SearchOptions) ([]SearchResult, error) {
+func (i *Indexer) Search(ctx context.Context, opts SearchOptions) ([]types.SearchResult, error) {
 	if i.index == nil {
 		return nil, errors.New("index not loaded")
 	}
@@ -274,7 +280,7 @@ func (i *Indexer) Search(ctx context.Context, opts SearchOptions) ([]SearchResul
 
 	useHybrid := i.cfg.HybridSearch || opts.UseHybrid
 
-	queryVecs, err := i.provider.Embed(ctx, []string{opts.Query})
+	queryVecs, err := i.Provider.Embed(ctx, []string{opts.Query})
 	if err != nil {
 		return nil, err
 	}
@@ -283,15 +289,15 @@ func (i *Indexer) Search(ctx context.Context, opts SearchOptions) ([]SearchResul
 	}
 	queryVec := queryVecs[0]
 
-	var hybridScorer *HybridScorer
+	var hybridScorer *search.HybridScorer
 	var queryTerms []string
 
 	if useHybrid {
-		queryTerms = extractQueryTerms(opts.Query)
-		hybridScorer = newHybridScorer(i.cfg.VectorWeight, i.cfg.KeywordWeight, i.index.ChunksByFile, i.projectRoot)
+		queryTerms = search.ExtractQueryTerms(opts.Query)
+		hybridScorer = search.NewHybridScorer(i.cfg.VectorWeight, i.cfg.KeywordWeight, i.index.ChunksByFile, i.projectRoot)
 	}
 
-	results := make([]SearchResult, 0, 32)
+	results := make([]types.SearchResult, 0, 32)
 	for _, chunks := range i.index.ChunksByFile {
 		for _, ch := range chunks {
 			if len(opts.Languages) > 0 && !containsString(opts.Languages, ch.Language) {
@@ -302,14 +308,14 @@ func (i *Indexer) Search(ctx context.Context, opts SearchOptions) ([]SearchResul
 			}
 			vectorScore := cosine(queryVec, ch.Embedding)
 
-			var finalScore float64
+		var finalScore float64
 			if useHybrid && hybridScorer != nil {
-				finalScore = hybridScorer.combineScores(vectorScore, ch.FilePath, ch.StartLine, ch.EndLine, queryTerms)
+				finalScore = hybridScorer.CombineScores(vectorScore, ch.FilePath, ch.StartLine, ch.EndLine, queryTerms)
 			} else {
 				finalScore = vectorScore
 			}
 
-			results = append(results, SearchResult{
+			results = append(results, types.SearchResult{
 				FilePath:  ch.FilePath,
 				Language:  ch.Language,
 				StartLine: ch.StartLine,
@@ -329,8 +335,8 @@ func (i *Indexer) Search(ctx context.Context, opts SearchOptions) ([]SearchResul
 	return results, nil
 }
 
-func (i *Indexer) Status() Status {
-	status := Status{Langs: map[string]int{}}
+func (i *Indexer) Status() types.Status {
+	status := types.Status{Langs: map[string]int{}}
 	if i.index == nil {
 		return status
 	}
@@ -344,6 +350,10 @@ func (i *Indexer) Status() Status {
 	return status
 }
 
+func (i *Indexer) IndexData() *IndexData {
+	return i.index
+}
+
 func containsString(values []string, target string) bool {
 	for _, v := range values {
 		if v == target {
@@ -355,7 +365,7 @@ func containsString(values []string, target string) bool {
 
 func matchesAnyGlob(patterns []string, relPath string) bool {
 	for _, pattern := range patterns {
-		if matchPattern(pattern, relPath) {
+		if utils.MatchPattern(pattern, relPath) {
 			return true
 		}
 	}

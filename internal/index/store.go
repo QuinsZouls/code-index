@@ -1,25 +1,27 @@
-package main
+package index
 
 import (
 	"encoding/gob"
 	"errors"
 	"os"
 	"path/filepath"
+
+	"github.com/QuinsZouls/code-index/internal/types"
 )
 
 type IndexData struct {
 	Version            int                      `json:"version"`
 	EmbeddingSignature string                   `json:"embedding_signature"`
-	Files              map[string]FileState     `json:"files"`
-	ChunksByFile       map[string][]ChunkRecord `json:"chunks_by_file"`
+	Files              map[string]types.FileState     `json:"files"`
+	ChunksByFile       map[string][]types.ChunkRecord `json:"chunks_by_file"`
 }
 
 func newIndexData(signature string) *IndexData {
 	return &IndexData{
 		Version:            1,
 		EmbeddingSignature: signature,
-		Files:              map[string]FileState{},
-		ChunksByFile:       map[string][]ChunkRecord{},
+		Files:              map[string]types.FileState{},
+		ChunksByFile:       map[string][]types.ChunkRecord{},
 	}
 }
 
@@ -37,10 +39,10 @@ func loadIndex(path string) (*IndexData, error) {
 		return nil, err
 	}
 	if data.Files == nil {
-		data.Files = map[string]FileState{}
+		data.Files = map[string]types.FileState{}
 	}
 	if data.ChunksByFile == nil {
-		data.ChunksByFile = map[string][]ChunkRecord{}
+		data.ChunksByFile = map[string][]types.ChunkRecord{}
 	}
 	if data.Version != 1 {
 		return nil, nil
@@ -48,7 +50,7 @@ func loadIndex(path string) (*IndexData, error) {
 	return &data, nil
 }
 
-func saveIndex(path string, data *IndexData) error {
+func SaveIndex(path string, data *IndexData) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -59,4 +61,8 @@ func saveIndex(path string, data *IndexData) error {
 	defer file.Close()
 	enc := gob.NewEncoder(file)
 	return enc.Encode(data)
+}
+
+func saveIndex(path string, data *IndexData) error {
+	return SaveIndex(path, data)
 }

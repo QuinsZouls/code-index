@@ -1,4 +1,4 @@
-package main
+package daemon
 
 import (
 	"encoding/json"
@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+
+	"github.com/QuinsZouls/code-index/internal/index"
 )
 
 type DaemonInfo struct {
@@ -33,7 +35,7 @@ func registryPath() (string, error) {
 }
 
 func lockFilePath(projectRoot string) string {
-	hash := fileHash([]byte(projectRoot))
+	hash := index.FileHash([]byte(projectRoot))
 	return filepath.Join(os.TempDir(), "codeindex-"+hash[:16]+".lock")
 }
 

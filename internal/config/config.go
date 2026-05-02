@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"encoding/json"
@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	settingsDirName  = ".codeindex"
-	settingsFileName = "settings.json"
+	SettingsDirName  = ".codeindex"
+	SettingsFileName = "settings.json"
 	indexFileName    = "index.gob"
 	configVersion    = 1
 )
@@ -110,7 +110,7 @@ func defaultConfig() Config {
 	}
 }
 
-func (c *Config) normalize() {
+func (c *Config) Normalize() {
 	if c.Version == 0 {
 		c.Version = configVersion
 	}
@@ -161,10 +161,10 @@ func (c *Config) normalize() {
 		c.VectorWeight = 0.7
 		c.KeywordWeight = 0.3
 	}
-	c.Embedding.normalize()
+	c.Embedding.Normalize()
 }
 
-func (e *EmbeddingConfig) normalize() {
+func (e *EmbeddingConfig) Normalize() {
 	e.Provider = strings.ToLower(strings.TrimSpace(e.Provider))
 	if e.Provider == "" {
 		e.Provider = "openai"
@@ -221,8 +221,8 @@ func (e *EmbeddingConfig) normalize() {
 	}
 }
 
-func loadConfig(projectRoot string) (Config, error) {
-	path := settingsPath(projectRoot)
+func LoadConfig(projectRoot string) (Config, error) {
+	path := SettingsPath(projectRoot)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -235,13 +235,13 @@ func loadConfig(projectRoot string) (Config, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parse config %s: %w", path, err)
 	}
-	cfg.normalize()
+	cfg.Normalize()
 	return cfg, nil
 }
 
-func saveConfig(projectRoot string, cfg Config) error {
-	cfg.normalize()
-	if err := os.MkdirAll(settingsDir(projectRoot), 0o755); err != nil {
+func SaveConfig(projectRoot string, cfg Config) error {
+	cfg.Normalize()
+	if err := os.MkdirAll(SettingsDir(projectRoot), 0o755); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
@@ -249,27 +249,27 @@ func saveConfig(projectRoot string, cfg Config) error {
 		return err
 	}
 	data = append(data, '\n')
-	return os.WriteFile(settingsPath(projectRoot), data, 0o644)
+	return os.WriteFile(SettingsPath(projectRoot), data, 0o644)
 }
 
-func initProject(projectRoot string) (Config, error) {
-	cfg, _ := loadUserDefaultConfig()
-	if err := saveConfig(projectRoot, cfg); err != nil {
+func InitProject(projectRoot string) (Config, error) {
+	cfg, _ := LoadUserDefaultConfig()
+	if err := SaveConfig(projectRoot, cfg); err != nil {
 		return Config{}, err
 	}
-	if err := ensureGitignore(projectRoot); err != nil {
+	if err := EnsureGitignore(projectRoot); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
 }
 
-func loadUserDefaultConfig() (Config, error) {
+func LoadUserDefaultConfig() (Config, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		cfg := defaultConfig()
 		return cfg, nil
 	}
-	path := filepath.Join(home, settingsDirName, "default_settings.json")
+	path := filepath.Join(home, SettingsDirName, "default_settings.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -282,21 +282,21 @@ func loadUserDefaultConfig() (Config, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parse user default config %s: %w", path, err)
 	}
-	cfg.normalize()
+	cfg.Normalize()
 	return cfg, nil
 }
 
-func saveUserDefaultConfig(cfg Config) error {
+func SaveUserDefaultConfig(cfg Config) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
 	}
-	dir := filepath.Join(home, settingsDirName)
+	dir := filepath.Join(home, SettingsDirName)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	path := filepath.Join(dir, "default_settings.json")
-	cfg.normalize()
+	cfg.Normalize()
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
@@ -305,32 +305,32 @@ func saveUserDefaultConfig(cfg Config) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
-func userDefaultConfigPath() (string, error) {
+func UserDefaultConfigPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, settingsDirName, "default_settings.json"), nil
+	return filepath.Join(home, SettingsDirName, "default_settings.json"), nil
 }
 
-func settingsDir(projectRoot string) string {
-	return filepath.Join(projectRoot, settingsDirName)
+func SettingsDir(projectRoot string) string {
+	return filepath.Join(projectRoot, SettingsDirName)
 }
 
-func settingsPath(projectRoot string) string {
-	return filepath.Join(settingsDir(projectRoot), settingsFileName)
+func SettingsPath(projectRoot string) string {
+	return filepath.Join(SettingsDir(projectRoot), SettingsFileName)
 }
 
-func indexPath(projectRoot string) string {
-	return filepath.Join(settingsDir(projectRoot), indexFileName)
+func IndexPath(projectRoot string) string {
+	return filepath.Join(SettingsDir(projectRoot), indexFileName)
 }
 
-func ensureGitignore(projectRoot string) error {
+func EnsureGitignore(projectRoot string) error {
 	if _, err := os.Stat(filepath.Join(projectRoot, ".git")); err != nil {
 		return nil
 	}
 	path := filepath.Join(projectRoot, ".gitignore")
-	entry := "/" + settingsDirName + "/"
+	entry := "/" + SettingsDirName + "/"
 	content, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
@@ -349,7 +349,7 @@ func ensureGitignore(projectRoot string) error {
 	return os.WriteFile(path, content, 0o644)
 }
 
-func apiKey(cfg EmbeddingConfig) string {
+func APIKey(cfg EmbeddingConfig) string {
 	if cfg.APIKey != "" {
 		return cfg.APIKey
 	}
@@ -370,7 +370,16 @@ func apiKey(cfg EmbeddingConfig) string {
 	}
 }
 
-func (c Config) embeddingSignature() string {
+func (c Config) EmbeddingSignature() string {
 	b, _ := json.Marshal(c.Embedding)
 	return string(b)
+}
+
+func containsString(values []string, target string) bool {
+	for _, v := range values {
+		if v == target {
+			return true
+		}
+	}
+	return false
 }

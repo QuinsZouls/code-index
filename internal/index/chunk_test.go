@@ -1,6 +1,8 @@
-package main
+package index
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestChunkTextSingleChunk(t *testing.T) {
 	got := chunkText("a\nb\nc", 10, 2, 0)

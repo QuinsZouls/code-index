@@ -1,4 +1,4 @@
-package main
+package index
 
 import (
 	"crypto/sha256"
@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/QuinsZouls/code-index/internal/config"
+	"github.com/QuinsZouls/code-index/internal/utils"
 )
 
 var ignoredDirs = map[string]struct{}{
@@ -50,7 +53,7 @@ func compileGitignorePattern(dirRel, line string) string {
 	if line == "" {
 		return ""
 	}
-	dirRel = filepathToSlash(dirRel)
+	dirRel = utils.FilepathToSlash(dirRel)
 	prefix := ""
 	if dirRel != "" {
 		prefix = dirRel + "/"
@@ -70,8 +73,8 @@ func compileGitignorePattern(dirRel, line string) string {
 	return prefix + "**/" + line
 }
 
-func shouldExclude(relPath string, isDir bool, cfg Config, gitignorePatterns []string) bool {
-	relPath = filepathToSlash(relPath)
+func shouldExclude(relPath string, isDir bool, cfg config.Config, gitignorePatterns []string) bool {
+	relPath = utils.FilepathToSlash(relPath)
 	base := filepath.Base(relPath)
 	if isDir {
 		if _, ok := ignoredDirs[base]; ok {
@@ -79,31 +82,31 @@ func shouldExclude(relPath string, isDir bool, cfg Config, gitignorePatterns []s
 		}
 	}
 	for _, pattern := range append(append([]string{}, cfg.ExcludePatterns...), gitignorePatterns...) {
-		if matchPattern(pattern, relPath) {
+		if utils.MatchPattern(pattern, relPath) {
 			return true
 		}
 	}
 	return false
 }
 
-func shouldInclude(relPath string, cfg Config) bool {
+func shouldInclude(relPath string, cfg config.Config) bool {
 	if len(cfg.IncludePatterns) == 0 {
 		return true
 	}
 	for _, pattern := range cfg.IncludePatterns {
-		if matchPattern(pattern, relPath) {
+		if utils.MatchPattern(pattern, relPath) {
 			return true
 		}
 	}
 	return false
 }
 
-func fileHash(b []byte) string {
+func FileHash(b []byte) string {
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
 }
 
-func walkFiles(projectRoot string, cfg Config) ([]string, error) {
+func WalkFiles(projectRoot string, cfg config.Config) ([]string, error) {
 	var files []string
 	if err := walkFilesDir(projectRoot, projectRoot, "", cfg, nil, &files); err != nil {
 		return nil, err
@@ -112,7 +115,7 @@ func walkFiles(projectRoot string, cfg Config) ([]string, error) {
 	return files, nil
 }
 
-func walkFilesDir(projectRoot, dirAbs, dirRel string, cfg Config, inheritedPatterns []string, files *[]string) error {
+func walkFilesDir(projectRoot, dirAbs, dirRel string, cfg config.Config, inheritedPatterns []string, files *[]string) error {
 	patterns := append([]string{}, inheritedPatterns...)
 	patterns = append(patterns, collectGitignorePatterns(dirAbs, dirRel)...)
 	entries, err := os.ReadDir(dirAbs)

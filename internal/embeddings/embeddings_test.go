@@ -1,4 +1,4 @@
-package main
+package embeddings
 
 import (
 	"context"
@@ -10,6 +10,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/QuinsZouls/code-index/internal/config"
 )
 
 func approxEqual(a, b float32) bool {
@@ -51,7 +53,7 @@ func TestOpenAICompatibleProviderEmbed(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p := newOpenAICompatibleProvider(EmbeddingConfig{BaseURL: server.URL, Model: "embed-1", APIKey: "secret"})
+	p := newOpenAICompatibleProvider(config.EmbeddingConfig{BaseURL: server.URL, Model: "embed-1", APIKey: "secret"})
 	vecs, err := p.Embed(context.Background(), []string{"hello", "world"})
 	if err != nil {
 		t.Fatal(err)
@@ -83,7 +85,7 @@ func TestGeminiProviderEmbed(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p := newGeminiProvider(EmbeddingConfig{BaseURL: server.URL, Model: "gem-embed"})
+	p := newGeminiProvider(config.EmbeddingConfig{BaseURL: server.URL, Model: "gem-embed"})
 	vecs, err := p.Embed(context.Background(), []string{"query"})
 	if err != nil {
 		t.Fatal(err)
@@ -112,7 +114,7 @@ func TestOllamaProviderEmbed(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p := newOllamaProvider(EmbeddingConfig{BaseURL: server.URL, Model: "ollama-embed"})
+	p := newOllamaProvider(config.EmbeddingConfig{BaseURL: server.URL, Model: "ollama-embed"})
 	vecs, err := p.Embed(context.Background(), []string{"hello"})
 	if err != nil {
 		t.Fatal(err)
@@ -123,7 +125,7 @@ func TestOllamaProviderEmbed(t *testing.T) {
 }
 
 func TestUnsupportedEmbeddingProvider(t *testing.T) {
-	if _, err := newEmbeddingProvider(EmbeddingConfig{Provider: "nope"}); err == nil {
+	if _, err := NewEmbeddingProvider(config.EmbeddingConfig{Provider: "nope"}); err == nil {
 		t.Fatal("expected error")
 	}
 }
@@ -175,7 +177,7 @@ func TestOpenAICompatibleProviderWithRateLimit(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p := newOpenAICompatibleProvider(EmbeddingConfig{
+	p := newOpenAICompatibleProvider(config.EmbeddingConfig{
 		BaseURL:   server.URL,
 		Model:     "test",
 		RateLimit: 5,
@@ -205,7 +207,7 @@ func TestOpenAICompatibleProviderWithTimeout(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p := newOpenAICompatibleProvider(EmbeddingConfig{
+	p := newOpenAICompatibleProvider(config.EmbeddingConfig{
 		BaseURL: server.URL,
 		Model:   "test",
 		Timeout: "100ms",
@@ -224,7 +226,7 @@ func TestGeminiProviderWithRateLimit(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p := newGeminiProvider(EmbeddingConfig{
+	p := newGeminiProvider(config.EmbeddingConfig{
 		BaseURL:   server.URL,
 		Model:     "test",
 		RateLimit: 5,
@@ -251,7 +253,7 @@ func TestOllamaProviderWithRateLimit(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p := newOllamaProvider(EmbeddingConfig{
+	p := newOllamaProvider(config.EmbeddingConfig{
 		BaseURL:   server.URL,
 		Model:     "test",
 		RateLimit: 5,
@@ -271,14 +273,14 @@ func TestOllamaProviderWithRateLimit(t *testing.T) {
 }
 
 func TestRetryConfigNil(t *testing.T) {
-	cfg := newRetryConfig(EmbeddingConfig{MaxRetries: 0})
+	cfg := newRetryConfig(config.EmbeddingConfig{MaxRetries: 0})
 	if cfg != nil {
 		t.Fatal("expected nil retry config for max_retries=0")
 	}
 }
 
 func TestRetryConfigBasic(t *testing.T) {
-	cfg := newRetryConfig(EmbeddingConfig{
+	cfg := newRetryConfig(config.EmbeddingConfig{
 		MaxRetries:        3,
 		RetryInitialDelay: "1s",
 		RetryMaxDelay:     "10s",
@@ -298,7 +300,7 @@ func TestRetryConfigBasic(t *testing.T) {
 }
 
 func TestRetryConfigExponentialBackoff(t *testing.T) {
-	cfg := newRetryConfig(EmbeddingConfig{
+	cfg := newRetryConfig(config.EmbeddingConfig{
 		MaxRetries:        5,
 		RetryInitialDelay: "1s",
 		RetryMaxDelay:     "16s",
@@ -323,7 +325,7 @@ func TestRetryConfigExponentialBackoff(t *testing.T) {
 }
 
 func TestRetryConfigMaxDelay(t *testing.T) {
-	cfg := newRetryConfig(EmbeddingConfig{
+	cfg := newRetryConfig(config.EmbeddingConfig{
 		MaxRetries:        5,
 		RetryInitialDelay: "1s",
 		RetryMaxDelay:     "4s",
@@ -375,7 +377,7 @@ func TestIsRetryableError(t *testing.T) {
 }
 
 func TestRetryWithBackoffSuccess(t *testing.T) {
-	cfg := newRetryConfig(EmbeddingConfig{
+	cfg := newRetryConfig(config.EmbeddingConfig{
 		MaxRetries:        3,
 		RetryInitialDelay: "100ms",
 		RetryMaxDelay:     "1s",
@@ -397,7 +399,7 @@ func TestRetryWithBackoffSuccess(t *testing.T) {
 }
 
 func TestRetryWithBackoffMaxRetries(t *testing.T) {
-	cfg := newRetryConfig(EmbeddingConfig{
+	cfg := newRetryConfig(config.EmbeddingConfig{
 		MaxRetries:        2,
 		RetryInitialDelay: "50ms",
 		RetryMaxDelay:     "200ms",
@@ -429,7 +431,7 @@ func TestOpenAICompatibleProviderWithRetry(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p := newOpenAICompatibleProvider(EmbeddingConfig{
+	p := newOpenAICompatibleProvider(config.EmbeddingConfig{
 		BaseURL:           server.URL,
 		Model:             "test",
 		MaxRetries:        3,

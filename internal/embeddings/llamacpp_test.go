@@ -1,4 +1,4 @@
-package main
+package embeddings
 
 import (
 	"context"
@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/QuinsZouls/code-index/internal/config"
 )
 
 func TestLlamacppConfigNormalization(t *testing.T) {
-	cfg := EmbeddingConfig{Provider: "llamacpp"}
-	cfg.normalize()
+	cfg := config.EmbeddingConfig{Provider: "llamacpp"}
+	cfg.Normalize()
 
 	if cfg.BaseURL != "http://localhost:8080/v1" {
 		t.Errorf("expected BaseURL http://localhost:8080/v1, got %s", cfg.BaseURL)
@@ -21,11 +23,11 @@ func TestLlamacppConfigNormalization(t *testing.T) {
 }
 
 func TestLlamacppConfigCustomURL(t *testing.T) {
-	cfg := EmbeddingConfig{
+	cfg := config.EmbeddingConfig{
 		Provider: "llamacpp",
 		BaseURL:  "http://custom-host:9999/v1",
 	}
-	cfg.normalize()
+	cfg.Normalize()
 
 	if cfg.BaseURL != "http://custom-host:9999/v1" {
 		t.Errorf("expected custom BaseURL, got %s", cfg.BaseURL)
@@ -33,14 +35,14 @@ func TestLlamacppConfigCustomURL(t *testing.T) {
 }
 
 func TestLlamacppProviderCreation(t *testing.T) {
-	cfg := EmbeddingConfig{
+	cfg := config.EmbeddingConfig{
 		Provider: "llamacpp",
 		Model:    "test-model",
 		BaseURL:  "http://localhost:8080/v1",
 	}
-	cfg.normalize()
+	cfg.Normalize()
 
-	provider, err := newEmbeddingProvider(cfg)
+	provider, err := NewEmbeddingProvider(cfg)
 	if err != nil {
 		t.Fatalf("failed to create provider: %v", err)
 	}
@@ -86,14 +88,14 @@ func TestLlamacppEmbeddingRequest(t *testing.T) {
 	}))
 	defer server.Close()
 
-	cfg := EmbeddingConfig{
+	cfg := config.EmbeddingConfig{
 		Provider: "llamacpp",
 		Model:    "test-model",
 		BaseURL:  server.URL + "/v1",
 	}
-	cfg.normalize()
+	cfg.Normalize()
 
-	provider, err := newEmbeddingProvider(cfg)
+	provider, err := NewEmbeddingProvider(cfg)
 	if err != nil {
 		t.Fatalf("failed to create provider: %v", err)
 	}
@@ -121,14 +123,14 @@ func TestLlamacppEmbeddingError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	cfg := EmbeddingConfig{
+	cfg := config.EmbeddingConfig{
 		Provider: "llamacpp",
 		Model:    "test-model",
 		BaseURL:  server.URL + "/v1",
 	}
-	cfg.normalize()
+	cfg.Normalize()
 
-	provider, err := newEmbeddingProvider(cfg)
+	provider, err := NewEmbeddingProvider(cfg)
 	if err != nil {
 		t.Fatalf("failed to create provider: %v", err)
 	}

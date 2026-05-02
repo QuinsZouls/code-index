@@ -1,4 +1,4 @@
-package main
+package embeddings
 
 import (
 	"bytes"
@@ -13,14 +13,16 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/QuinsZouls/code-index/internal/config"
 )
 
 type EmbeddingProvider interface {
 	Embed(ctx context.Context, texts []string) ([][]float32, error)
 }
 
-func newEmbeddingProvider(cfg EmbeddingConfig) (EmbeddingProvider, error) {
-	cfg.normalize()
+func NewEmbeddingProvider(cfg config.EmbeddingConfig) (EmbeddingProvider, error) {
+	cfg.Normalize()
 	switch cfg.Provider {
 	case "openai", "openai-compatible", "openrouter", "mistral", "lmstudio", "llamacpp":
 		return newOpenAICompatibleProvider(cfg), nil
@@ -80,7 +82,7 @@ type retryConfig struct {
 	currentDelay   time.Duration
 }
 
-func newRetryConfig(cfg EmbeddingConfig) *retryConfig {
+func newRetryConfig(cfg config.EmbeddingConfig) *retryConfig {
 	maxRetries := cfg.MaxRetries
 	if maxRetries <= 0 {
 		return nil
@@ -188,7 +190,7 @@ type openAICompatibleProvider struct {
 	retryCfg *retryConfig
 }
 
-func newOpenAICompatibleProvider(cfg EmbeddingConfig) *openAICompatibleProvider {
+func newOpenAICompatibleProvider(cfg config.EmbeddingConfig) *openAICompatibleProvider {
 	timeout, _ := time.ParseDuration(cfg.Timeout)
 	if timeout == 0 {
 		timeout = 60 * time.Second
@@ -196,7 +198,7 @@ func newOpenAICompatibleProvider(cfg EmbeddingConfig) *openAICompatibleProvider 
 	return &openAICompatibleProvider{
 		baseURL:  strings.TrimRight(cfg.BaseURL, "/"),
 		model:    cfg.Model,
-		apiKey:   apiKey(cfg),
+		apiKey:   config.APIKey(cfg),
 		headers:  cfg.Headers,
 		client:   &http.Client{Timeout: timeout},
 		limiter:  newSimpleRateLimiter(cfg.RateLimit),
@@ -276,7 +278,7 @@ type geminiProvider struct {
 	retryCfg *retryConfig
 }
 
-func newGeminiProvider(cfg EmbeddingConfig) *geminiProvider {
+func newGeminiProvider(cfg config.EmbeddingConfig) *geminiProvider {
 	timeout, _ := time.ParseDuration(cfg.Timeout)
 	if timeout == 0 {
 		timeout = 60 * time.Second
@@ -284,7 +286,7 @@ func newGeminiProvider(cfg EmbeddingConfig) *geminiProvider {
 	return &geminiProvider{
 		baseURL:  strings.TrimRight(cfg.BaseURL, "/"),
 		model:    cfg.Model,
-		apiKey:   apiKey(cfg),
+		apiKey:   config.APIKey(cfg),
 		client:   &http.Client{Timeout: timeout},
 		limiter:  newSimpleRateLimiter(cfg.RateLimit),
 		retryCfg: newRetryConfig(cfg),
@@ -364,7 +366,7 @@ type ollamaProvider struct {
 	retryCfg *retryConfig
 }
 
-func newOllamaProvider(cfg EmbeddingConfig) *ollamaProvider {
+func newOllamaProvider(cfg config.EmbeddingConfig) *ollamaProvider {
 	timeout, _ := time.ParseDuration(cfg.Timeout)
 	if timeout == 0 {
 		timeout = 60 * time.Second
