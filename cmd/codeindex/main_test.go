@@ -6,6 +6,9 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/QuinsZouls/code-index/internal/config"
+	"github.com/QuinsZouls/code-index/internal/utils"
 )
 
 func TestSplitCSV(t *testing.T) {
@@ -18,10 +21,10 @@ func TestSplitCSV(t *testing.T) {
 
 func TestFindProjectRoot(t *testing.T) {
 	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, settingsDirName), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, config.SettingsDirName), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(settingsPath(root), []byte("{}"), 0o644); err != nil {
+	if err := os.WriteFile(config.SettingsPath(root), []byte("{}"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	nested := filepath.Join(root, "nested", "deeper")
@@ -69,7 +72,7 @@ func TestReadChunkContent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := readChunkContent(root, "test.go", tt.startLine, tt.endLine)
+			got := utils.ReadChunkContent(root, "test.go", tt.startLine, tt.endLine)
 			if got != tt.want {
 				t.Fatalf("readChunkContent() = %q, want %q", got, tt.want)
 			}
@@ -77,14 +80,14 @@ func TestReadChunkContent(t *testing.T) {
 	}
 
 	t.Run("missing file", func(t *testing.T) {
-		got := readChunkContent(root, "missing.go", 1, 5)
+		got := utils.ReadChunkContent(root, "missing.go", 1, 5)
 		if !strings.Contains(got, "file unavailable") {
 			t.Fatalf("expected error message, got %q", got)
 		}
 	})
 
 	t.Run("invalid start line", func(t *testing.T) {
-		got := readChunkContent(root, "test.go", 0, 5)
+		got := utils.ReadChunkContent(root, "test.go", 0, 5)
 		if got != "[line range invalid]" {
 			t.Fatalf("expected invalid range message, got %q", got)
 		}

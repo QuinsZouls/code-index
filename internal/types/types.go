@@ -1,4 +1,4 @@
-package main
+package types
 
 type Chunk struct {
 	Content   string

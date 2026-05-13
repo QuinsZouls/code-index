@@ -1,4 +1,4 @@
-package main
+package daemon
 
 import (
 	"context"
@@ -12,6 +12,10 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/QuinsZouls/code-index/internal/config"
+	"github.com/QuinsZouls/code-index/internal/index"
+	"github.com/QuinsZouls/code-index/internal/types"
 )
 
 type FileChangeType int
@@ -23,8 +27,8 @@ const (
 
 type Daemon struct {
 	projectRoot string
-	cfg         Config
-	indexer     *Indexer
+	cfg         config.Config
+	indexer     *index.Indexer
 	interval    time.Duration
 	debounce    time.Duration
 	verbose     bool
@@ -34,7 +38,7 @@ type Daemon struct {
 	releaseLock func()
 }
 
-func runDaemon(args []string) {
+func RunDaemon(args []string) {
 	if len(args) < 1 {
 		printDaemonUsage()
 		os.Exit(1)
@@ -92,13 +96,6 @@ func runDaemonStart(args []string) {
 		return
 	}
 
-	cfg, err := loadConfig(root)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	_ = cfg
-
 	lockPath := lockFilePath(root)
 	data, err := os.ReadFile(lockPath)
 	if err == nil {
@@ -111,7 +108,7 @@ func runDaemonStart(args []string) {
 		}
 	}
 
-	indexFile := indexPath(root)
+	indexFile := config.IndexPath(root)
 	if _, err := os.Stat(indexFile); os.IsNotExist(err) {
 		fmt.Fprintln(os.Stderr, "No index found. Run 'codeindex index' first.")
 		os.Exit(1)
@@ -153,13 +150,12 @@ func runDaemonStart(args []string) {
 }
 
 func runDaemonProcess(root string, interval, debounce time.Duration, verbose bool) {
-	cfg, err := loadConfig(root)
+	cfg, err := config.LoadConfig(root)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-
-	indexer, err := newIndexer(root, cfg)
+	indexer, err := index.NewIndexer(root, cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create indexer: %v\n", err)
 		os.Exit(1)
@@ -306,9 +302,9 @@ func runDaemonStatus(args []string) {
 	fmt.Printf("Debounce: %s\n", info.Debounce)
 
 	if status == "running" {
-		cfg, err := loadConfig(root)
+		cfg, err := config.LoadConfig(root)
 		if err == nil {
-			indexer, err := newIndexer(root, cfg)
+			indexer, err := index.NewIndexer(root, cfg)
 			if err == nil {
 				s := indexer.Status()
 				fmt.Printf("Files:    %d\n", s.Files)
@@ -377,7 +373,7 @@ func (d *Daemon) Stop() {
 func (d *Daemon) scan() map[string]FileChangeType {
 	changes := make(map[string]FileChangeType)
 
-	files, err := walkFiles(d.projectRoot, d.cfg)
+	files, err := index.WalkFiles(d.projectRoot, d.cfg)
 	if err != nil {
 		return changes
 	}
@@ -394,7 +390,7 @@ func (d *Daemon) scan() map[string]FileChangeType {
 			continue
 		}
 
-		prevState, exists := d.indexer.index.Files[rel]
+		prevState, exists := d.indexer.IndexData().Files[rel]
 		if !exists {
 			changes[rel] = FileModified
 			continue
@@ -407,7 +403,7 @@ func (d *Daemon) scan() map[string]FileChangeType {
 		}
 	}
 
-	for rel := range d.indexer.index.Files {
+	for rel := range d.indexer.IndexData().Files {
 		if _, exists := fileSet[rel]; !exists {
 			changes[rel] = FileDeleted
 		}
@@ -439,8 +435,8 @@ func (d *Daemon) processBatch() {
 
 	if len(deleted) > 0 {
 		for _, path := range deleted {
-			delete(d.indexer.index.Files, path)
-			delete(d.indexer.index.ChunksByFile, path)
+			delete(d.indexer.IndexData().Files, path)
+			delete(d.indexer.IndexData().ChunksByFile, path)
 			if d.verbose {
 				fmt.Printf("[~] %s (deleted)\n", path)
 			}
@@ -466,17 +462,17 @@ func (d *Daemon) processBatch() {
 				continue
 			}
 
-			chunks := d.indexer.fileChunks(rel, string(data))
+			chunks := d.indexer.FileChunks(rel, string(data))
 			if len(chunks) == 0 {
 				continue
 			}
 
 			texts := make([]string, 0, len(chunks))
 			for _, ch := range chunks {
-				texts = append(texts, ch.Content)
+				texts = append(texts, index.EmbeddingInputForChunk(ch.Content))
 			}
 
-			vecs, err := d.indexer.provider.Embed(ctx, texts)
+			vecs, err := d.indexer.Provider.Embed(ctx, texts)
 			if err != nil {
 				if d.verbose {
 					fmt.Printf("[!] %s: embed failed: %v\n", rel, err)
@@ -484,28 +480,29 @@ func (d *Daemon) processBatch() {
 				continue
 			}
 
-			records := make([]ChunkRecord, 0, len(chunks))
-			lang := d.indexer.languageFor(rel)
+			records := make([]types.ChunkRecord, 0, len(chunks))
+			lang := d.indexer.LanguageFor(rel)
 			for idx, ch := range chunks {
-				records = append(records, ChunkRecord{
+				records = append(records, types.ChunkRecord{
 					FilePath:  rel,
 					Language:  lang,
 					StartLine: ch.StartLine,
 					EndLine:   ch.EndLine,
 					Embedding: vecs[idx],
-					ChunkHash: fileHash([]byte(ch.Content)),
+					ChunkHash: index.FileHash([]byte(ch.Content)),
 				})
 			}
 
-			hash := fileHash(data)
-			_, existed := d.indexer.index.Files[rel]
-			d.indexer.index.Files[rel] = FileState{
+			hash := index.FileHash(data)
+			idxData := d.indexer.IndexData()
+			_, existed := idxData.Files[rel]
+			idxData.Files[rel] = types.FileState{
 				Hash:            hash,
 				ChunkCount:      len(records),
 				Size:            info.Size(),
 				ModTimeUnixNano: info.ModTime().UTC().UnixNano(),
 			}
-			d.indexer.index.ChunksByFile[rel] = records
+			idxData.ChunksByFile[rel] = records
 
 			if d.verbose {
 				if !existed {
@@ -516,9 +513,8 @@ func (d *Daemon) processBatch() {
 			}
 		}
 	}
-
 	if len(modified) > 0 || len(deleted) > 0 {
-		if err := saveIndex(indexPath(d.projectRoot), d.indexer.index); err != nil {
+		if err := index.SaveIndex(config.IndexPath(d.projectRoot), d.indexer.IndexData()); err != nil {
 			if d.verbose {
 				fmt.Printf("[!] failed to save index: %v\n", err)
 			}

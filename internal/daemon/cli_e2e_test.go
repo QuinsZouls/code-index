@@ -1,4 +1,4 @@
-package main
+package daemon
 
 import (
 	"encoding/json"
@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/QuinsZouls/code-index/internal/config"
 )
 
 func TestCLIE2E(t *testing.T) {
@@ -54,7 +56,7 @@ func TestCLIE2E(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		bin += ".exe"
 	}
-	build := exec.Command("go", "build", "-o", bin, "./src")
+	build := exec.Command("go", "build", "-o", bin, "../cmd/codeindex")
 	build.Dir = projectRoot(t)
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("go build failed: %v\n%s", err, out)
@@ -74,17 +76,17 @@ func TestCLIE2E(t *testing.T) {
 	if out := run("init", "-path", root); !strings.Contains(out, "initialized:") {
 		t.Fatalf("init output = %q", out)
 	}
-	settings := filepath.Join(root, settingsDirName, settingsFileName)
+	settings := filepath.Join(root, config.SettingsDirName, config.SettingsFileName)
 	data, err := os.ReadFile(settings)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var cfg Config
+	var cfg config.Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		t.Fatal(err)
 	}
-	cfg.Embedding = EmbeddingConfig{Provider: "openai-compatible", Model: "fake", BaseURL: server.URL, APIKey: "test"}
-	if err := saveConfig(root, cfg); err != nil {
+	cfg.Embedding = config.EmbeddingConfig{Provider: "openai-compatible", Model: "fake", BaseURL: server.URL, APIKey: "test"}
+	if err := config.SaveConfig(root, cfg); err != nil {
 		t.Fatal(err)
 	}
 

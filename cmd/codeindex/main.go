@@ -13,6 +13,13 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/QuinsZouls/code-index/internal/config"
+	"github.com/QuinsZouls/code-index/internal/daemon"
+	"github.com/QuinsZouls/code-index/internal/embeddings"
+	"github.com/QuinsZouls/code-index/internal/index"
+	"github.com/QuinsZouls/code-index/internal/types"
+	"github.com/QuinsZouls/code-index/internal/utils"
 )
 
 const appVersion = "0.1.6"
@@ -38,7 +45,7 @@ func main() {
 	case "clear":
 		runClear(os.Args[2:])
 	case "daemon":
-		runDaemon(os.Args[2:])
+		daemon.RunDaemon(os.Args[2:])
 	case "onboard":
 		runOnboard(os.Args[2:])
 	default:
@@ -57,7 +64,7 @@ func findProjectRoot(start string) (string, error) {
 		return "", err
 	}
 	for {
-		if _, err := os.Stat(settingsPath(cur)); err == nil {
+		if _, err := os.Stat(config.SettingsPath(cur)); err == nil {
 			return cur, nil
 		}
 		parent := filepath.Dir(cur)
@@ -77,7 +84,7 @@ func runInit(args []string) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	if _, err := initProject(root); err != nil {
+	if _, err := config.InitProject(root); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -94,12 +101,12 @@ func runIndex(args []string) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	cfg, err := loadConfig(root)
+	cfg, err := config.LoadConfig(root)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	indexer, err := newIndexer(root, cfg)
+	indexer, err := index.NewIndexer(root, cfg)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -110,7 +117,7 @@ func runIndex(args []string) {
 	printer := newProgressPrinter(os.Stdout, os.Stderr, "Indexing")
 	defer printer.Stop()
 	var indexed int
-	indexer.progressFn = func(p IndexProgress) {
+	indexer.ProgressFn = func(p types.IndexProgress) {
 		if *verbose {
 			printer.Emit(p)
 		}
@@ -151,17 +158,17 @@ func runSearch(args []string) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	indexFile := indexPath(root)
+	indexFile := config.IndexPath(root)
 	if _, err := os.Stat(indexFile); errors.Is(err, os.ErrNotExist) {
 		fmt.Fprintln(os.Stderr, "No index found. Run 'codeindex init' first to initialize the project.")
 		os.Exit(1)
 	}
-	cfg, err := loadConfig(root)
+	cfg, err := config.LoadConfig(root)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	indexer, err := newIndexer(root, cfg)
+	indexer, err := index.NewIndexer(root, cfg)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -178,7 +185,7 @@ func runSearch(args []string) {
 	if fetchLimit < 50 {
 		fetchLimit = 50
 	}
-	results, err := indexer.Search(ctx, SearchOptions{
+	results, err := indexer.Search(ctx, index.SearchOptions{
 		Query:     query,
 		Limit:     fetchLimit,
 		Offset:    *offset,
@@ -190,7 +197,7 @@ func runSearch(args []string) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	filtered := make([]SearchResult, 0, len(results))
+	filtered := make([]types.SearchResult, 0, len(results))
 	for _, r := range results {
 		if r.Score >= cfg.ScoreThreshold {
 			filtered = append(filtered, r)
@@ -210,7 +217,7 @@ func runSearch(args []string) {
 		return
 	}
 	for i, r := range filtered {
-		content := readChunkContent(root, r.FilePath, r.StartLine, r.EndLine)
+		content := utils.ReadChunkContent(root, r.FilePath, r.StartLine, r.EndLine)
 		fmt.Printf("\n--- Result %d (score: %.3f) ---\n", i+1, r.Score)
 		fmt.Printf("File: %s:%d-%d [%s]\n", r.FilePath, r.StartLine, r.EndLine, r.Language)
 		fmt.Println(content)
@@ -226,17 +233,17 @@ func runStatus(args []string) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	indexFile := indexPath(root)
+	indexFile := config.IndexPath(root)
 	if _, err := os.Stat(indexFile); errors.Is(err, os.ErrNotExist) {
 		fmt.Fprintln(os.Stderr, "No index found. Run 'codeindex init' first to initialize the project.")
 		os.Exit(1)
 	}
-	cfg, err := loadConfig(root)
+	cfg, err := config.LoadConfig(root)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	indexer, err := newIndexer(root, cfg)
+	indexer, err := index.NewIndexer(root, cfg)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -268,22 +275,6 @@ func splitCSV(s string) []string {
 		}
 	}
 	return out
-}
-
-func readChunkContent(projectRoot, relPath string, startLine, endLine int) string {
-	absPath := filepath.Join(projectRoot, relPath)
-	data, err := os.ReadFile(absPath)
-	if err != nil {
-		return fmt.Sprintf("[file unavailable: %v]", err)
-	}
-	lines := strings.Split(string(data), "\n")
-	if startLine < 1 || startLine > len(lines) {
-		return "[line range invalid]"
-	}
-	if endLine > len(lines) {
-		endLine = len(lines)
-	}
-	return strings.Join(lines[startLine-1:endLine], "\n")
 }
 
 type progressPrinter struct {
@@ -324,7 +315,7 @@ func (p *progressPrinter) spin() {
 	}
 }
 
-func (p *progressPrinter) Emit(progress IndexProgress) {
+func (p *progressPrinter) Emit(progress types.IndexProgress) {
 	if progress.File == "" {
 		return
 	}
@@ -377,7 +368,7 @@ func runDoctor(args []string) {
 		hasErrors = true
 	} else {
 		fmt.Printf("[OK]   Home directory: %s\n", home)
-		globalPath := filepath.Join(home, settingsDirName, "default_settings.json")
+		globalPath := filepath.Join(home, config.SettingsDirName, "default_settings.json")
 		if data, err := os.ReadFile(globalPath); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				fmt.Printf("[WARN] Global settings: not found at %s\n", globalPath)
@@ -387,16 +378,16 @@ func runDoctor(args []string) {
 			}
 		} else {
 			fmt.Printf("[OK]   Global settings: %s\n", globalPath)
-			var cfg Config
+			var cfg config.Config
 			if err := json.Unmarshal(data, &cfg); err != nil {
 				fmt.Printf("[FAIL] Global settings parse: %v\n", err)
 				hasErrors = true
 			} else {
-				cfg.normalize()
+				cfg.Normalize()
 				fmt.Printf("       Provider: %s\n", cfg.Embedding.Provider)
 				fmt.Printf("       Model: %s\n", cfg.Embedding.Model)
 				fmt.Printf("       Base URL: %s\n", cfg.Embedding.BaseURL)
-				key := apiKey(cfg.Embedding)
+				key := config.APIKey(cfg.Embedding)
 				if key == "" && cfg.Embedding.Provider != "ollama" && cfg.Embedding.Provider != "lmstudio" && cfg.Embedding.Provider != "llamacpp" {
 					fmt.Printf("[FAIL] API key: not set (env: %s)\n", cfg.Embedding.APIKeyEnv)
 					hasErrors = true
@@ -405,7 +396,7 @@ func runDoctor(args []string) {
 				} else {
 					fmt.Printf("[OK]   API key: not required for %s\n", cfg.Embedding.Provider)
 				}
-				provider, err := newEmbeddingProvider(cfg.Embedding)
+				provider, err := embeddings.NewEmbeddingProvider(cfg.Embedding)
 				if err != nil {
 					fmt.Printf("[FAIL] Provider init: %v\n", err)
 					hasErrors = true
@@ -427,7 +418,7 @@ func runDoctor(args []string) {
 			}
 		}
 	}
-	projectSettings := settingsPath(root)
+	projectSettings := config.SettingsPath(root)
 	if data, err := os.ReadFile(projectSettings); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			fmt.Printf("[WARN] Project settings: not found at %s\n", projectSettings)
@@ -437,13 +428,13 @@ func runDoctor(args []string) {
 		}
 	} else {
 		fmt.Printf("[OK]   Project settings: %s\n", projectSettings)
-		var cfg Config
+		var cfg config.Config
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			fmt.Printf("[FAIL] Project settings parse: %v\n", err)
 			hasErrors = true
 		}
 	}
-	indexFile := indexPath(root)
+	indexFile := config.IndexPath(root)
 	if _, err := os.Stat(indexFile); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			fmt.Printf("[WARN] Index file: not found at %s\n", indexFile)
@@ -471,7 +462,7 @@ func runClear(args []string) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	indexFile := indexPath(root)
+	indexFile := config.IndexPath(root)
 	if _, err := os.Stat(indexFile); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			fmt.Println("no index to clear")
@@ -493,13 +484,13 @@ var providerDefaults = map[string]struct {
 	keyEnv   string
 	needsKey bool
 }{
-	"openai":           {"text-embedding-3-small", "https://api.openai.com/v1", "OPENAI_API_KEY", true},
-	"ollama":           {"nomic-embed-text", "http://localhost:11434", "", false},
-	"openrouter":       {"openai/text-embedding-3-small", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY", true},
-	"mistral":          {"mistral-embed", "https://api.mistral.ai/v1", "MISTRAL_API_KEY", true},
-	"gemini":           {"text-embedding-004", "https://generativelanguage.googleapis.com/v1beta", "GEMINI_API_KEY", true},
-	"lmstudio":         {"text-embedding-nomic-embed-text-v1.5", "http://localhost:1234/v1", "", false},
-	"llamacpp":         {"local-model", "http://localhost:8080/v1", "", false},
+	"openai":            {"text-embedding-3-small", "https://api.openai.com/v1", "OPENAI_API_KEY", true},
+	"ollama":            {"nomic-embed-text", "http://localhost:11434", "", false},
+	"openrouter":        {"openai/text-embedding-3-small", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY", true},
+	"mistral":           {"mistral-embed", "https://api.mistral.ai/v1", "MISTRAL_API_KEY", true},
+	"gemini":            {"text-embedding-004", "https://generativelanguage.googleapis.com/v1beta", "GEMINI_API_KEY", true},
+	"lmstudio":          {"text-embedding-nomic-embed-text-v1.5", "http://localhost:1234/v1", "", false},
+	"llamacpp":          {"local-model", "http://localhost:8080/v1", "", false},
 	"openai-compatible": {"", "", "OPENAI_API_KEY", true},
 }
 
@@ -511,7 +502,7 @@ func runOnboard(args []string) {
 	apiKeyEnvFlag := fs.String("api-key-env", "", "environment variable name for API key")
 	_ = fs.Parse(args)
 
-	cfg, _ := loadUserDefaultConfig()
+	cfg, _ := config.LoadUserDefaultConfig()
 	if *providerFlag != "" || *modelFlag != "" || *baseURLFlag != "" || *apiKeyEnvFlag != "" {
 		if *providerFlag != "" {
 			cfg.Embedding.Provider = *providerFlag
@@ -532,12 +523,12 @@ func runOnboard(args []string) {
 		if *apiKeyEnvFlag != "" {
 			cfg.Embedding.APIKeyEnv = *apiKeyEnvFlag
 		}
-		cfg.normalize()
-		if err := saveUserDefaultConfig(cfg); err != nil {
+		cfg.Normalize()
+		if err := config.SaveUserDefaultConfig(cfg); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		path, _ := userDefaultConfigPath()
+		path, _ := config.UserDefaultConfigPath()
 		fmt.Printf("saved to %s\n", path)
 		fmt.Printf("provider: %s\n", cfg.Embedding.Provider)
 		fmt.Printf("model: %s\n", cfg.Embedding.Model)
@@ -605,7 +596,7 @@ func runOnboard(args []string) {
 	} else {
 		cfg.Embedding.APIKeyEnv = ""
 	}
-	cfg.normalize()
+	cfg.Normalize()
 
 	fmt.Println()
 	fmt.Println("Configuration:")
@@ -625,12 +616,12 @@ func runOnboard(args []string) {
 		return
 	}
 
-	if err := saveUserDefaultConfig(cfg); err != nil {
+	if err := config.SaveUserDefaultConfig(cfg); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
-	path, _ := userDefaultConfigPath()
+	path, _ := config.UserDefaultConfigPath()
 	fmt.Printf("saved to %s\n", path)
 	fmt.Println()
 	fmt.Println("You can now run 'codeindex init' in your projects to use these defaults.")

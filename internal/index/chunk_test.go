@@ -1,6 +1,8 @@
-package main
+package index
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestChunkTextSingleChunk(t *testing.T) {
 	got := chunkText("a\nb\nc", 10, 2, 0)
@@ -144,5 +146,24 @@ func TestChunkByContextSize(t *testing.T) {
 				t.Errorf("got %d chunks, want %d", len(got), tt.wantChunks)
 			}
 		})
+	}
+}
+
+func TestEmbeddingInputForChunk(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"", " "},
+		{"   ", " "},
+		{"\n\t\n", " "},
+		{"hello", "hello"},
+		{"  hi  ", "  hi  "},
+	}
+	for _, tt := range tests {
+		got := EmbeddingInputForChunk(tt.in)
+		if got != tt.want {
+			t.Errorf("EmbeddingInputForChunk(%q) = %q, want %q", tt.in, got, tt.want)
+		}
 	}
 }

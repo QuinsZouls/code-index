@@ -1,4 +1,4 @@
-package main
+package index
 
 import (
 	"context"
@@ -6,12 +6,14 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/QuinsZouls/code-index/internal/config"
 )
 
 type stubEmbeddingProvider struct {
 	calls int
 	texts []string
-	vecs  map[string][]float32
+	vects map[string][]float32
 }
 
 func (s *stubEmbeddingProvider) Embed(ctx context.Context, texts []string) ([][]float32, error) {
@@ -19,11 +21,11 @@ func (s *stubEmbeddingProvider) Embed(ctx context.Context, texts []string) ([][]
 	s.texts = append(s.texts, texts...)
 	out := make([][]float32, len(texts))
 	for i, text := range texts {
-		vec, ok := s.vecs[text]
+		vect, ok := s.vects[text]
 		if !ok {
-			vec = []float32{0}
+			vect = []float32{0}
 		}
-		out[i] = append([]float32(nil), vec...)
+		out[i] = append([]float32(nil), vect...)
 	}
 	return out, nil
 }
@@ -33,15 +35,16 @@ func TestIndexerIndexSearchAndSkipUnchanged(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "hello.go"), []byte("alpha"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg := defaultConfig()
+	cfg := config.Config{}
+	cfg.Normalize()
 	cfg.IncludePatterns = []string{"**/*.go"}
-	cfg.Embedding = EmbeddingConfig{Provider: "openai-compatible", Model: "fake"}
-	provider := &stubEmbeddingProvider{vecs: map[string][]float32{"alpha": {1, 0}}}
+	cfg.Embedding = config.EmbeddingConfig{Provider: "openai-compatible", Model: "fake"}
+	provider := &stubEmbeddingProvider{vects: map[string][]float32{"alpha": {1, 0}}}
 	indexer := &Indexer{
 		projectRoot: root,
 		cfg:         cfg,
-		provider:    provider,
-		index:       newIndexData(cfg.embeddingSignature()),
+		Provider:    provider,
+		index:       newIndexData(cfg.EmbeddingSignature()),
 	}
 	if err := indexer.Index(context.Background()); err != nil {
 		t.Fatal(err)
@@ -59,11 +62,11 @@ func TestIndexerIndexSearchAndSkipUnchanged(t *testing.T) {
 	if firstState := indexer.index.Files["hello.go"]; firstState.Size != firstStat.Size() || firstState.ModTimeUnixNano == 0 {
 		t.Fatalf("file state = %#v", firstState)
 	}
-	if _, err := os.Stat(indexPath(root)); err != nil {
+	if _, err := os.Stat(config.IndexPath(root)); err != nil {
 		t.Fatal(err)
 	}
-	searchProvider := &stubEmbeddingProvider{vecs: map[string][]float32{"alpha": {1, 0}}}
-	indexer.provider = searchProvider
+	searchProvider := &stubEmbeddingProvider{vects: map[string][]float32{"alpha": {1, 0}}}
+	indexer.Provider = searchProvider
 	results, err := indexer.Search(context.Background(), SearchOptions{Query: "alpha", Limit: 5})
 	if err != nil {
 		t.Fatal(err)
@@ -74,7 +77,7 @@ func TestIndexerIndexSearchAndSkipUnchanged(t *testing.T) {
 	if results[0].Score < 0.99 {
 		t.Fatalf("score = %v, want close to 1", results[0].Score)
 	}
-	indexer.provider = provider
+	indexer.Provider = provider
 	if err := indexer.Index(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -96,9 +99,11 @@ func TestIndexerIndexSearchAndSkipUnchanged(t *testing.T) {
 }
 
 func TestIndexerHelpers(t *testing.T) {
-	idx := &Indexer{cfg: defaultConfig()}
-	if got := idx.languageFor("src/main.go"); got != "go" {
-		t.Fatalf("languageFor() = %q", got)
+	cfg := config.Config{}
+	cfg.Normalize()
+	idx := &Indexer{cfg: cfg}
+	if got := idx.LanguageFor("src/main.go"); got != "go" {
+		t.Fatalf("LanguageFor() = %q", got)
 	}
 	if !containsString([]string{"go", "python"}, "python") {
 		t.Fatal("containsString() should be true")
@@ -119,13 +124,14 @@ func TestIndexerRespectsConfigTuning(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "a.go"), []byte("alpha"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg := defaultConfig()
+	cfg := config.Config{}
+	cfg.Normalize()
 	cfg.IncludePatterns = []string{"**/*.go"}
 	cfg.WorkerCount = 1
 	cfg.CheckpointEvery = 1
-	cfg.Embedding = EmbeddingConfig{Provider: "openai-compatible", Model: "fake"}
-	provider := &stubEmbeddingProvider{vecs: map[string][]float32{"alpha": {1, 0}}}
-	indexer := &Indexer{projectRoot: root, cfg: cfg, provider: provider, index: newIndexData(cfg.embeddingSignature())}
+	cfg.Embedding = config.EmbeddingConfig{Provider: "openai-compatible", Model: "fake"}
+	provider := &stubEmbeddingProvider{vects: map[string][]float32{"alpha": {1, 0}}}
+	indexer := &Indexer{projectRoot: root, cfg: cfg, Provider: provider, index: newIndexData(cfg.EmbeddingSignature())}
 	if err := indexer.Index(context.Background()); err != nil {
 		t.Fatal(err)
 	}

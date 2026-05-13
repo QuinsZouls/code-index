@@ -1,8 +1,12 @@
-package main
+package index
 
-import "strings"
+import (
+	"strings"
 
-func chunkText(text string, maxLines, overlap, contextSize int) []Chunk {
+	"github.com/QuinsZouls/code-index/internal/types"
+)
+
+func chunkText(text string, maxLines, overlap, contextSize int) []types.Chunk {
 	if maxLines <= 0 {
 		maxLines = 120
 	}
@@ -21,13 +25,13 @@ func chunkText(text string, maxLines, overlap, contextSize int) []Chunk {
 	}
 
 	if len(lines) <= maxLines {
-		return []Chunk{{Content: text, StartLine: 1, EndLine: len(lines)}}
+		return []types.Chunk{{Content: text, StartLine: 1, EndLine: len(lines)}}
 	}
 	step := maxLines - overlap
 	if step <= 0 {
 		step = maxLines
 	}
-	chunks := make([]Chunk, 0, (len(lines)/step)+1)
+	chunks := make([]types.Chunk, 0, (len(lines)/step)+1)
 	for start := 0; start < len(lines); start += step {
 		end := start + maxLines
 		if end > len(lines) {
@@ -38,7 +42,7 @@ func chunkText(text string, maxLines, overlap, contextSize int) []Chunk {
 			break
 		}
 		content := strings.Join(chunkLines, "\n")
-		chunks = append(chunks, Chunk{Content: content, StartLine: start + 1, EndLine: end})
+		chunks = append(chunks, types.Chunk{Content: content, StartLine: start + 1, EndLine: end})
 		if end == len(lines) {
 			break
 		}
@@ -46,15 +50,26 @@ func chunkText(text string, maxLines, overlap, contextSize int) []Chunk {
 	return chunks
 }
 
+// EmbeddingInputForChunk returns text suitable for embedding APIs that reject
+// empty input (e.g. Perplexity pplx-embed via OpenRouter). The original chunk
+// content is unchanged for storage and hashing; only the value sent to Embed
+// should pass through this function.
+func EmbeddingInputForChunk(content string) string {
+	if strings.TrimSpace(content) == "" {
+		return " "
+	}
+	return content
+}
+
 // chunkByContextSize splits text into chunks that fit within contextSize characters,
 // respecting line boundaries when possible.
-func chunkByContextSize(text string, contextSize, overlap int) []Chunk {
+func chunkByContextSize(text string, contextSize, overlap int) []types.Chunk {
 	lines := strings.Split(text, "\n")
 	if len(lines) == 0 {
 		return nil
 	}
 
-	var chunks []Chunk
+	var chunks []types.Chunk
 	startLine := 0
 
 	for startLine < len(lines) {
@@ -78,7 +93,7 @@ func chunkByContextSize(text string, contextSize, overlap int) []Chunk {
 		}
 
 		content := strings.Join(lines[chunkStart:endLine], "\n")
-		chunks = append(chunks, Chunk{
+		chunks = append(chunks, types.Chunk{
 			Content:   content,
 			StartLine: chunkStart + 1,
 			EndLine:   endLine,

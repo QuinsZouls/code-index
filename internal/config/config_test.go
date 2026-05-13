@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"encoding/json"
@@ -11,7 +11,7 @@ import (
 
 func TestDefaultConfigNormalize(t *testing.T) {
 	cfg := defaultConfig()
-	cfg.normalize()
+	cfg.Normalize()
 	if cfg.Embedding.Provider != "openai" {
 		t.Fatalf("provider = %q, want openai", cfg.Embedding.Provider)
 	}
@@ -33,7 +33,7 @@ func TestConfigSupportsIndexerTuning(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.WorkerCount = 12
 	cfg.CheckpointEvery = 25
-	cfg.normalize()
+	cfg.Normalize()
 	if cfg.WorkerCount != 12 || cfg.CheckpointEvery != 25 {
 		t.Fatalf("tuning values lost: %#v", cfg)
 	}
@@ -46,10 +46,10 @@ func TestSaveLoadConfigRoundTrip(t *testing.T) {
 	cfg.ExcludePatterns = []string{"**/tmp"}
 	cfg.LanguageOverrides = map[string]string{"inc": "php"}
 	cfg.Embedding = EmbeddingConfig{Provider: "openai-compatible", Model: "embed-1", BaseURL: "https://example.com/v1", APIKeyEnv: "MY_KEY"}
-	if err := saveConfig(root, cfg); err != nil {
+	if err := SaveConfig(root, cfg); err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := loadConfig(root)
+	loaded, err := LoadConfig(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestInitProjectCreatesGitignore(t *testing.T) {
 		t.Fatal(err)
 	}
 	home := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(home, settingsDirName), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, SettingsDirName), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
@@ -83,13 +83,13 @@ func TestInitProjectCreatesGitignore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, settingsDirName, "default_settings.json"), append(data, '\n'), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(home, SettingsDirName, "default_settings.json"), append(data, '\n'), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := initProject(root); err != nil {
+	if _, err := InitProject(root); err != nil {
 		t.Fatal(err)
 	}
-	projectCfg, err := loadConfig(root)
+	projectCfg, err := LoadConfig(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,10 +113,10 @@ func TestInitProjectIgnoresMissingUserDefaults(t *testing.T) {
 	}
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	if _, err := initProject(root); err != nil {
+	if _, err := InitProject(root); err != nil {
 		t.Fatal(err)
 	}
-	projectCfg, err := loadConfig(root)
+	projectCfg, err := LoadConfig(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,17 +127,17 @@ func TestInitProjectIgnoresMissingUserDefaults(t *testing.T) {
 
 func TestAPIKeyResolution(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "from-env")
-	if got := apiKey(EmbeddingConfig{Provider: "openai"}); got != "from-env" {
-		t.Fatalf("apiKey() = %q, want from-env", got)
+	if got := APIKey(EmbeddingConfig{Provider: "openai"}); got != "from-env" {
+		t.Fatalf("APIKey() = %q, want from-env", got)
 	}
-	if got := apiKey(EmbeddingConfig{Provider: "openai", APIKey: "explicit"}); got != "explicit" {
-		t.Fatalf("apiKey() = %q, want explicit", got)
+	if got := APIKey(EmbeddingConfig{Provider: "openai", APIKey: "explicit"}); got != "explicit" {
+		t.Fatalf("APIKey() = %q, want explicit", got)
 	}
 }
 
 func TestEmbeddingConfigRateLimit(t *testing.T) {
 	cfg := EmbeddingConfig{RateLimit: 10}
-	cfg.normalize()
+	cfg.Normalize()
 	if cfg.RateLimit != 10 {
 		t.Fatalf("RateLimit = %d, want 10", cfg.RateLimit)
 	}
@@ -145,7 +145,7 @@ func TestEmbeddingConfigRateLimit(t *testing.T) {
 
 func TestEmbeddingConfigTimeoutDefault(t *testing.T) {
 	cfg := EmbeddingConfig{}
-	cfg.normalize()
+	cfg.Normalize()
 	if cfg.Timeout != "60s" {
 		t.Fatalf("Timeout = %q, want 60s", cfg.Timeout)
 	}
@@ -153,7 +153,7 @@ func TestEmbeddingConfigTimeoutDefault(t *testing.T) {
 
 func TestEmbeddingConfigTimeoutCustom(t *testing.T) {
 	cfg := EmbeddingConfig{Timeout: "30s"}
-	cfg.normalize()
+	cfg.Normalize()
 	if cfg.Timeout != "30s" {
 		t.Fatalf("Timeout = %q, want 30s", cfg.Timeout)
 	}
@@ -164,10 +164,10 @@ func TestConfigWithRateLimitRoundTrip(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.Embedding.RateLimit = 15
 	cfg.Embedding.Timeout = "45s"
-	if err := saveConfig(root, cfg); err != nil {
+	if err := SaveConfig(root, cfg); err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := loadConfig(root)
+	loaded, err := LoadConfig(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestConfigWithRateLimitRoundTrip(t *testing.T) {
 
 func TestEmbeddingConfigRetryDefaults(t *testing.T) {
 	cfg := EmbeddingConfig{}
-	cfg.normalize()
+	cfg.Normalize()
 	if cfg.MaxRetries != 0 {
 		t.Fatalf("MaxRetries = %d, want 0 (disabled by default)", cfg.MaxRetries)
 	}
@@ -199,10 +199,10 @@ func TestConfigWithRetryRoundTrip(t *testing.T) {
 	cfg.Embedding.MaxRetries = 3
 	cfg.Embedding.RetryInitialDelay = "2s"
 	cfg.Embedding.RetryMaxDelay = "20s"
-	if err := saveConfig(root, cfg); err != nil {
+	if err := SaveConfig(root, cfg); err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := loadConfig(root)
+	loaded, err := LoadConfig(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,10 +223,10 @@ func TestSaveUserDefaultConfig(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.Embedding.Provider = "ollama"
 	cfg.Embedding.Model = "nomic-embed-text"
-	if err := saveUserDefaultConfig(cfg); err != nil {
+	if err := SaveUserDefaultConfig(cfg); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(home, settingsDirName, "default_settings.json")
+	path := filepath.Join(home, SettingsDirName, "default_settings.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -246,23 +246,23 @@ func TestSaveUserDefaultConfig(t *testing.T) {
 func TestSaveUserDefaultConfigUpdatesExisting(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	if err := os.MkdirAll(filepath.Join(home, settingsDirName), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, SettingsDirName), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	existing := defaultConfig()
 	existing.Embedding.Provider = "openai"
 	existing.Embedding.Model = "text-embedding-3-large"
 	data, _ := json.MarshalIndent(existing, "", "  ")
-	if err := os.WriteFile(filepath.Join(home, settingsDirName, "default_settings.json"), append(data, '\n'), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(home, SettingsDirName, "default_settings.json"), append(data, '\n'), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg := defaultConfig()
 	cfg.Embedding.Provider = "mistral"
 	cfg.Embedding.Model = "mistral-embed"
-	if err := saveUserDefaultConfig(cfg); err != nil {
+	if err := SaveUserDefaultConfig(cfg); err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := loadUserDefaultConfig()
+	loaded, err := LoadUserDefaultConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,11 +277,11 @@ func TestSaveUserDefaultConfigUpdatesExisting(t *testing.T) {
 func TestUserDefaultConfigPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	path, err := userDefaultConfigPath()
+	path, err := UserDefaultConfigPath()
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected := filepath.Join(home, settingsDirName, "default_settings.json")
+	expected := filepath.Join(home, SettingsDirName, "default_settings.json")
 	if path != expected {
 		t.Fatalf("path = %q, want %q", path, expected)
 	}

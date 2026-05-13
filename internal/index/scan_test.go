@@ -1,10 +1,12 @@
-package main
+package index
 
 import (
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/QuinsZouls/code-index/internal/config"
 )
 
 func TestWalkFilesHonorsIncludesAndIgnores(t *testing.T) {
@@ -37,13 +39,16 @@ func TestWalkFilesHonorsIncludesAndIgnores(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got, err := walkFiles(root, defaultConfig())
+	cfg := config.Config{}
+	cfg.Normalize()
+	cfg.IncludePatterns = []string{"**/*.go", "**/*.md"}
+	got, err := WalkFiles(root, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"main.go", filepath.Join("sub", "readme.md")}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("walkFiles() = %#v, want %#v", got, want)
+		t.Fatalf("WalkFiles() = %#v, want %#v", got, want)
 	}
 }
 
@@ -61,18 +66,21 @@ func TestWalkFilesHonorsNestedGitignore(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "repo", "nested", "skip.go"), []byte("package main"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, err := walkFiles(filepath.Join(root, "repo"), defaultConfig())
+	cfg := config.Config{}
+	cfg.Normalize()
+	got, err := WalkFiles(filepath.Join(root, "repo"), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"keep.go"}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("walkFiles() = %#v, want %#v", got, want)
+		t.Fatalf("WalkFiles() = %#v, want %#v", got, want)
 	}
 }
 
 func TestMatchExcludeHelper(t *testing.T) {
-	cfg := defaultConfig()
+	cfg := config.Config{}
+	cfg.Normalize()
 	if !shouldExclude(filepath.Join("a", ".codeindex"), true, cfg, nil) {
 		t.Fatal("expected .codeindex directory to be excluded")
 	}

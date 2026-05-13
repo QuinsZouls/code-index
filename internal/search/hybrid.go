@@ -1,8 +1,11 @@
-package main
+package search
 
 import (
 	"regexp"
 	"strings"
+
+	"github.com/QuinsZouls/code-index/internal/types"
+	"github.com/QuinsZouls/code-index/internal/utils"
 )
 
 type HybridScorer struct {
@@ -13,7 +16,7 @@ type HybridScorer struct {
 	projectRoot   string
 }
 
-func newHybridScorer(vectorWeight, keywordWeight float64, chunksByFile map[string][]ChunkRecord, projectRoot string) *HybridScorer {
+func NewHybridScorer(vectorWeight, keywordWeight float64, chunksByFile map[string][]types.ChunkRecord, projectRoot string) *HybridScorer {
 	if vectorWeight < 0 {
 		vectorWeight = 0
 	}
@@ -34,7 +37,7 @@ func newHybridScorer(vectorWeight, keywordWeight float64, chunksByFile map[strin
 	for _, chunks := range chunksByFile {
 		totalDocs += len(chunks)
 		for _, ch := range chunks {
-			content := readChunkContent(projectRoot, ch.FilePath, ch.StartLine, ch.EndLine)
+			content := utils.ReadChunkContent(projectRoot, ch.FilePath, ch.StartLine, ch.EndLine)
 			terms := tokenize(content)
 			seen := make(map[string]bool)
 			for _, term := range terms {
@@ -55,13 +58,18 @@ func newHybridScorer(vectorWeight, keywordWeight float64, chunksByFile map[strin
 	}
 }
 
-func (h *HybridScorer) combineScores(vectorScore float64, filePath string, startLine, endLine int, queryTerms []string) float64 {
+func (h *HybridScorer) CombineScores(vectorScore float64, filePath string, startLine, endLine int, queryTerms []string) float64 {
 	if h.keywordWeight == 0 {
 		return vectorScore
 	}
-	content := readChunkContent(h.projectRoot, filePath, startLine, endLine)
+	content := utils.ReadChunkContent(h.projectRoot, filePath, startLine, endLine)
 	keywordScore := h.tfidfScore(content, queryTerms)
 	return h.vectorWeight*vectorScore + h.keywordWeight*keywordScore
+}
+
+// TFIDFScore computes the TF-IDF keyword score for the given content and query terms.
+func (h *HybridScorer) TFIDFScore(content string, queryTerms []string) float64 {
+	return h.tfidfScore(content, queryTerms)
 }
 
 func (h *HybridScorer) tfidfScore(content string, queryTerms []string) float64 {
@@ -106,6 +114,11 @@ func tokenize(text string) []string {
 	return terms
 }
 
-func extractQueryTerms(query string) []string {
+// Tokenize splits text into lowercase tokens.
+func Tokenize(text string) []string {
+	return tokenize(text)
+}
+
+func ExtractQueryTerms(query string) []string {
 	return tokenize(query)
 }
