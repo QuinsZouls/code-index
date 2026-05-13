@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.7
+
+### Fixed
+
+- Indexing no longer sends empty or whitespace-only chunk text to embedding APIs that reject empty input (for example Perplexity embeddings via OpenRouter), which previously could yield an empty `data` array and a count mismatch error.
+
+### Changed
+
+- OpenAI-compatible embedding responses: decode errors and embedding count mismatches now include a short snippet of the response body to simplify debugging.
+
 ## 0.1.6
 
 ### Fixed

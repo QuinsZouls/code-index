@@ -22,7 +22,7 @@ import (
 	"github.com/QuinsZouls/code-index/internal/utils"
 )
 
-const appVersion = "0.1.6"
+const appVersion = "0.1.7"
 
 func main() {
 	if len(os.Args) < 2 {
