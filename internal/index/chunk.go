@@ -50,6 +50,17 @@ func chunkText(text string, maxLines, overlap, contextSize int) []types.Chunk {
 	return chunks
 }
 
+// EmbeddingInputForChunk returns text suitable for embedding APIs that reject
+// empty input (e.g. Perplexity pplx-embed via OpenRouter). The original chunk
+// content is unchanged for storage and hashing; only the value sent to Embed
+// should pass through this function.
+func EmbeddingInputForChunk(content string) string {
+	if strings.TrimSpace(content) == "" {
+		return " "
+	}
+	return content
+}
+
 // chunkByContextSize splits text into chunks that fit within contextSize characters,
 // respecting line boundaries when possible.
 func chunkByContextSize(text string, contextSize, overlap int) []types.Chunk {

@@ -228,6 +228,14 @@ func (p *openAICompatibleProvider) Embed(ctx context.Context, texts []string) ([
 	return vecs, nil
 }
 
+func embeddingResponseBodySnippet(b []byte, max int) string {
+	s := strings.TrimSpace(string(b))
+	if len(s) > max {
+		return s[:max] + "..."
+	}
+	return s
+}
+
 func (p *openAICompatibleProvider) doRequest(ctx context.Context, texts []string) ([][]float32, error) {
 	body := map[string]any{"model": p.model, "input": texts}
 	data, _ := json.Marshal(body)
@@ -251,16 +259,20 @@ func (p *openAICompatibleProvider) doRequest(ctx context.Context, texts []string
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return nil, fmt.Errorf("embedding API error: %s: %s", resp.Status, strings.TrimSpace(string(b)))
 	}
+	rawBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
 	var out struct {
 		Data []struct {
 			Embedding []float32 `json:"embedding"`
 		} `json:"data"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, err
+	if err := json.Unmarshal(rawBody, &out); err != nil {
+		return nil, fmt.Errorf("embedding response decode: %w (body: %s)", err, embeddingResponseBodySnippet(rawBody, 512))
 	}
 	if len(out.Data) != len(texts) {
-		return nil, fmt.Errorf("embedding response count mismatch: got %d want %d", len(out.Data), len(texts))
+		return nil, fmt.Errorf("embedding response count mismatch: got %d want %d (body: %s)", len(out.Data), len(texts), embeddingResponseBodySnippet(rawBody, 512))
 	}
 	vecs := make([][]float32, len(out.Data))
 	for i := range out.Data {

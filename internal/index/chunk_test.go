@@ -148,3 +148,22 @@ func TestChunkByContextSize(t *testing.T) {
 		})
 	}
 }
+
+func TestEmbeddingInputForChunk(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"", " "},
+		{"   ", " "},
+		{"\n\t\n", " "},
+		{"hello", "hello"},
+		{"  hi  ", "  hi  "},
+	}
+	for _, tt := range tests {
+		got := EmbeddingInputForChunk(tt.in)
+		if got != tt.want {
+			t.Errorf("EmbeddingInputForChunk(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}

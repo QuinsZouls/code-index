@@ -150,7 +150,7 @@ func (i *Indexer) Index(ctx context.Context) error {
 			chunks := i.FileChunks(job.rel, string(data))
 			texts := make([]string, 0, len(chunks))
 			for _, ch := range chunks {
-				texts = append(texts, ch.Content)
+				texts = append(texts, EmbeddingInputForChunk(ch.Content))
 			}
 			vecs, err := i.Provider.Embed(ctx, texts)
 			if err != nil {

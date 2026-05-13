@@ -469,7 +469,7 @@ func (d *Daemon) processBatch() {
 
 			texts := make([]string, 0, len(chunks))
 			for _, ch := range chunks {
-				texts = append(texts, ch.Content)
+				texts = append(texts, index.EmbeddingInputForChunk(ch.Content))
 			}
 
 			vecs, err := d.indexer.Provider.Embed(ctx, texts)
